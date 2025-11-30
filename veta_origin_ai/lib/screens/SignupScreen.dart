@@ -1,5 +1,6 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:veta_origin_ai/screens/LoginScreen.dart';
 
 class SignupScreen extends StatefulWidget {
   const SignupScreen({super.key});
@@ -45,7 +46,11 @@ class _SignupScreenState extends State<SignupScreen> {
                     right: 24.0,
                     bottom: 8.0,
                   ),
-                  child: Icon(Icons.abc),
+                  child: Image.asset(
+                    "images/google_icon.png",
+                    width: 28,
+                    height: 28,
+                  ),
                 ),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.grey.shade800,
@@ -75,7 +80,7 @@ class _SignupScreenState extends State<SignupScreen> {
               top: 32.0,
               left: 28.0,
               right: 28.0,
-              bottom: 12,
+              bottom: 0,
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -156,19 +161,21 @@ class _SignupScreenState extends State<SignupScreen> {
               ],
             ),
           ),
-          SizedBox(height: 18),
-          ElevatedButton(
-            onPressed: () {},
-            child: Padding(
-              padding: const EdgeInsets.only(
-                top: 8.0,
-                left: 64.0,
-                right: 64.0,
-                bottom: 8.0,
-              ),
-              child: Text(
-                "Create Account",
-                style: TextStyle(color: Colors.black),
+          Padding(
+            padding: const EdgeInsets.only(top: 12.0, bottom: 20.0),
+            child: ElevatedButton(
+              onPressed: () {},
+              child: Padding(
+                padding: const EdgeInsets.only(
+                  top: 18.0,
+                  left: 74.0,
+                  right: 74.0,
+                  bottom: 18.0,
+                ),
+                child: Text(
+                  "Create Account",
+                  style: TextStyle(color: Colors.black),
+                ),
               ),
             ),
           ),
@@ -180,7 +187,7 @@ class _SignupScreenState extends State<SignupScreen> {
                   style: TextStyle(color: Colors.grey),
                 ),
                 TextSpan(
-                  text: "Login",
+                  text: " Login",
                   style: TextStyle(
                     color: Colors.white,
                     fontWeight: FontWeight.bold,
@@ -189,7 +196,12 @@ class _SignupScreenState extends State<SignupScreen> {
                   recognizer:
                       TapGestureRecognizer()
                         ..onTap = () {
-                          print("Tapped");
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => LoginScreen(),
+                            ),
+                          );
                         },
                 ),
               ],
