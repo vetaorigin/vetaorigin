@@ -13,7 +13,7 @@ class _SideDrawerState extends State<SideDrawer> {
   Widget build(BuildContext context) {
     return Drawer(
       width: 250,
-      backgroundColor: const Color(0xFF030213),
+      backgroundColor: const Color.fromARGB(255, 0, 0, 0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [

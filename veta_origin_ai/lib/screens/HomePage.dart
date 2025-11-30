@@ -76,9 +76,9 @@ class _HomePageState extends State<HomePage>
         iconTheme: IconThemeData(
           color: Colors.grey, // your desired color
         ),
-        backgroundColor: const Color(0xFF030213),
+        backgroundColor: const Color.fromARGB(255, 0, 0, 0),
       ),
-      backgroundColor: const Color(0xFF030213),
+      backgroundColor: const Color.fromARGB(255, 0, 0, 0),
       drawer: SideDrawer(),
       body: Container(
         width: double.infinity,
