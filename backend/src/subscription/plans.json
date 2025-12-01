@@ -1,0 +1,20 @@
+{
+  "basic": {
+    "tts": 10,
+    "stt": 10,
+    "s2s": 10,
+    "description": "10 TTS/STT/S2S minutes per month"
+  },
+  "pro": {
+    "tts": 100,
+    "stt": 100,
+    "s2s": 100,
+    "description": "100 TTS/STT/S2S minutes per month"
+  },
+  "enterprise": {
+    "tts": -1,
+    "stt": -1,
+    "s2s": -1,
+    "description": "Unlimited usage"
+  }
+}

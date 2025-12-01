@@ -1,0 +1,15 @@
+// routes/stt.js
+import express from "express";
+import { speechToText } from "../controllers/sttController.js";
+import { requireAuth } from "../middleware/authMiddleware.js";
+import { rateLimit } from "../middleware/ratelimit.js";
+
+const router = express.Router();
+
+/**
+ * @route POST /stt
+ * Protected route with session and rate limiting
+ */
+router.post("/", requireAuth, rateLimit("stt"), speechToText);
+
+export default router;

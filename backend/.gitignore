@@ -1,0 +1,13 @@
+# Node modules
+node_modules/
+
+# Environment files
+.env
+
+# Logs
+logs/
+*.log
+
+# Temporary uploads
+upload/
+public/audio_temp/
