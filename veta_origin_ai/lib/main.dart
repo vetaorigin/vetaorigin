@@ -1,13 +1,17 @@
 import 'package:flutter/material.dart';
+import 'package:veta_origin_ai/widgets/ChatProvider.dart';
 import 'screens/HomePage.dart';
 import '../widgets/ThemeProvidder.dart';
 import 'package:provider/provider.dart';
 
 void main() {
   runApp(
-    ChangeNotifierProvider(
-      create: (_) => ThemeProvider(),
-      child: const MyApp(),
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => ChatProvider()),
+        ChangeNotifierProvider(create: (_) => ThemeProvider()),
+      ],
+      child: MyApp(),
     ),
   );
 }

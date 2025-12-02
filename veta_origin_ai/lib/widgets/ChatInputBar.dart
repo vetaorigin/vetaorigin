@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 
 class ChatInputBar extends StatefulWidget {
-  const ChatInputBar({super.key});
+  final Function(String) onSend;
+  const ChatInputBar({required this.onSend, super.key});
 
   @override
   State<ChatInputBar> createState() => _ChatInputBarState();
@@ -23,6 +24,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
 
   @override
   Widget build(BuildContext context) {
+    // final controller = TextEditingController();
     return SafeArea(
       child: Container(
         padding: EdgeInsets.only(left: 10, right: 10, top: 12, bottom: 5),

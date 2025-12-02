@@ -13,29 +13,87 @@ class SignupScreen extends StatefulWidget {
 }
 
 class _SignupScreenState extends State<SignupScreen> {
-  Future<void> signup(String name, String email, String password) async {
-    final url = Uri.parse("http://localhost:4000/signup");
+  bool _isLoading = false;
+  Future<void> signup(String username, String email, String password) async {
+    setState(() {
+      _isLoading = true;
+    });
 
-    final response = await http.post(
-      url,
-      headers: {"Content-Type": "application/json"},
-      body: jsonEncode({"name": name, "email": email, "password": password}),
-    );
+    final url = Uri.parse("http://172.20.10.6:4000/auth/signup");
 
-    if (response.statusCode == 201) {
-      print("Successfull");
-    } else {
-      print("Failled to signup");
+    try {
+      final response = await http.post(
+        url,
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({
+          "username": username,
+          "email": email,
+          "password": password,
+        }),
+      );
+
+      setState(() {
+        _isLoading = false;
+      });
+
+      // Success (201)
+      if (response.statusCode == 200) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("Signup successful!"),
+            backgroundColor: Colors.green,
+          ),
+        );
+
+        // Navigate to LoginScreen after short delay
+        Future.delayed(Duration(seconds: 1), () {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => LoginScreen()),
+          );
+        });
+        return;
+      }
+
+      // User already exists (409)
+      if (response.statusCode == 409) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("Account already exists."),
+            backgroundColor: Colors.orange,
+          ),
+        );
+        return;
+      }
+
+      // Other failure
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Signup failed. Try again."),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Network error. Please try again."),
+          backgroundColor: Colors.red,
+        ),
+      );
     }
   }
 
-  final TextEditingController nameController = TextEditingController();
+  final TextEditingController usernameController = TextEditingController();
   final TextEditingController emailController = TextEditingController();
   final TextEditingController passwordController = TextEditingController();
 
   @override
   void dispose() {
-    nameController.dispose();
+    usernameController.dispose();
     emailController.dispose();
     passwordController.dispose();
     super.dispose();
@@ -124,7 +182,7 @@ class _SignupScreenState extends State<SignupScreen> {
                   ),
                   SizedBox(height: 6),
                   TextField(
-                    controller: nameController,
+                    controller: usernameController,
                     decoration: InputDecoration(
                       filled: true,
                       fillColor: Colors.grey.shade800,
@@ -195,13 +253,16 @@ class _SignupScreenState extends State<SignupScreen> {
                     child: Padding(
                       padding: const EdgeInsets.only(top: 12.0, bottom: 20.0),
                       child: ElevatedButton(
-                        onPressed: () {
-                          signup(
-                            nameController.text,
-                            emailController.text,
-                            passwordController.text,
-                          );
-                        },
+                        onPressed:
+                            _isLoading
+                                ? null
+                                : () {
+                                  signup(
+                                    usernameController.text,
+                                    emailController.text,
+                                    passwordController.text,
+                                  );
+                                },
                         child: Padding(
                           padding: const EdgeInsets.only(
                             top: 18.0,
@@ -209,10 +270,20 @@ class _SignupScreenState extends State<SignupScreen> {
                             right: 74.0,
                             bottom: 18.0,
                           ),
-                          child: Text(
-                            "Create Account",
-                            style: TextStyle(color: Colors.black),
-                          ),
+                          child:
+                              _isLoading
+                                  ? SizedBox(
+                                    width: 22,
+                                    height: 22,
+                                    child: CircularProgressIndicator(
+                                      color: Colors.white,
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                  : Text(
+                                    "Create Account",
+                                    style: TextStyle(color: Colors.black),
+                                  ),
                         ),
                       ),
                     ),

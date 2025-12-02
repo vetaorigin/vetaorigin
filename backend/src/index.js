@@ -49,27 +49,24 @@ app.use("/public", express.static(path.join(process.cwd(), "public")));
 //   })
 // );
 
-
 app.use(
   session({
     secret: process.env.SESSION_SECRET,
     resave: false,
     saveUninitialized: false,
-    cookie: { httpOnly: true, maxAge: 7 * 24 * 60 * 60 * 1000 } // 7 days
+    cookie: { httpOnly: true, maxAge: 7 * 24 * 60 * 60 * 1000 }, // 7 days
   })
 );
 
-
-app.use(cors({
-  origin: process.env.FRONTEND_URL, // for testing only, lock down in production
-  credentials: true
-}));
+app.use(
+  cors({
+    origin: "*", // for testing only, lock down in production
+    credentials: true,
+  })
+);
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-
-
-
 
 // Routes
 app.use("/auth", authRoutes);
@@ -96,6 +93,6 @@ app.use((err, req, res, next) => {
 
 // Start server
 const PORT = process.env.PORT || 4000;
-app.listen(PORT, () => {
+app.listen(PORT, "0.0.0.0", () => {
   logger.info(`VoiceBridge backend running on port ${PORT}`);
 });
