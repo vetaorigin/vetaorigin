@@ -9,8 +9,9 @@ class ChatProvider extends ChangeNotifier {
   bool isLoading = false;
   bool hasError = false;
 
+  // 🔹 TEXT MESSAGE CALL
   Future<void> sendMessage(String userMessage) async {
-    messages.add(ChatMessage(text: userMessage, isUser: true));
+    messages.add(ChatMessage(message: userMessage, isUser: true));
     notifyListeners();
 
     isLoading = true;
@@ -24,7 +25,53 @@ class ChatProvider extends ChangeNotifier {
         body: jsonEncode({"prompt": userMessage}),
       );
 
-      // timeout after 20 seconds
+      final response = await responseFuture.timeout(
+        const Duration(seconds: 20),
+        onTimeout: () {
+          hasError = true;
+          isLoading = false;
+          notifyListeners();
+          return http.Response("Timeout", 408);
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        messages.add(
+          ChatMessage(message: data["reply"] ?? "No response", isUser: false),
+        );
+      } else {
+        hasError = true;
+      }
+    } catch (e) {
+      hasError = true;
+    }
+
+    isLoading = false;
+    notifyListeners();
+  }
+
+  // 🔹 REAL-TIME VOICE CHAT – SEND AUDIO
+  Future<void> sendAudioMessage(List<int> audioBytes) async {
+    messages.add(ChatMessage(message: "(voice message)", isUser: true));
+    notifyListeners();
+
+    isLoading = true;
+    hasError = false;
+    notifyListeners();
+
+    try {
+      String base64Audio = base64Encode(audioBytes);
+
+      final responseFuture = http.post(
+        Uri.parse("http://172.20.10.6:4000/auth/chat/audio"),
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({
+          "audio": base64Audio,
+          "format": "wav", // or pcm_16 / m4a depending on your recorder
+        }),
+      );
+
       final response = await responseFuture.timeout(
         const Duration(seconds: 20),
         onTimeout: () {
@@ -39,7 +86,10 @@ class ChatProvider extends ChangeNotifier {
         final data = jsonDecode(response.body);
 
         messages.add(
-          ChatMessage(text: data["reply"] ?? "No response", isUser: false),
+          ChatMessage(
+            message: data["reply"] ?? "No AI response",
+            isUser: false,
+          ),
         );
       } else {
         hasError = true;

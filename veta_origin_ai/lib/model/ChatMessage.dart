@@ -1,6 +1,6 @@
 class ChatMessage {
-  final String text;
+  final String message;
   final bool isUser;
 
-  ChatMessage({required this.text, required this.isUser});
+  ChatMessage({required this.message, required this.isUser});
 }

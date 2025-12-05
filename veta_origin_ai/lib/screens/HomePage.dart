@@ -255,7 +255,7 @@ class _HomePageState extends State<HomePage>
         Expanded(
           child: ListView.builder(
             controller: _scrollController,
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
             itemCount:
                 chat.messages.length +
                 (chat.isLoading ? 1 : 0) +
@@ -281,7 +281,7 @@ class _HomePageState extends State<HomePage>
 
   Widget _buildMessageBubble(ChatMessage msg) {
     final bool isUser = msg.isUser;
-    // final String text = msg.message;
+    final String text = msg.message;
 
     return Align(
       alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
@@ -297,40 +297,13 @@ class _HomePageState extends State<HomePage>
             borderRadius: BorderRadius.circular(16),
           ),
           child: Text(
-            "text",
+            text,
             style: TextStyle(color: Colors.white, fontSize: 16),
           ),
         ),
       ),
     );
   }
-
-  // Widget _buildMessageBubble(dynamic msg) {
-  //   // msg expected shape: { text, isUser } or your ChatMessage type
-  //   final bool isUser = msg.isUser ?? false;
-  //   final String text = msg.text ?? msg.toString();
-
-  //   return Align(
-  //     alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
-  //     child: ConstrainedBox(
-  //       constraints: BoxConstraints(
-  //         maxWidth: MediaQuery.of(context).size.width * 0.75,
-  //       ),
-  //       child: Container(
-  //         margin: EdgeInsets.symmetric(vertical: 6),
-  //         padding: EdgeInsets.all(14),
-  //         decoration: BoxDecoration(
-  //           color: isUser ? Colors.deepPurple : Colors.grey.shade800,
-  //           borderRadius: BorderRadius.circular(16),
-  //         ),
-  //         child: Text(
-  //           text,
-  //           style: TextStyle(color: Colors.white, fontSize: 16),
-  //         ),
-  //       ),
-  //     ),
-  //   );
-  // }
 
   Widget _buildLoadingBubble() {
     return Align(
@@ -351,7 +324,7 @@ class _HomePageState extends State<HomePage>
               child: CircularProgressIndicator(strokeWidth: 2),
             ),
             SizedBox(width: 10),
-            Text("Thinking...", style: TextStyle(color: Colors.white)),
+            Text("Deep Thinking...", style: TextStyle(color: Colors.white)),
           ],
         ),
       ),
