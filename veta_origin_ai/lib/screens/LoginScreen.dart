@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
 import 'package:veta_origin_ai/screens/SignupScreen.dart';
 import 'package:http/http.dart' as http;
+import 'package:veta_origin_ai/screens/HomePage.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -13,22 +14,85 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
+  bool _isLoading = false;
+
   Future<void> login(String email, String password) async {
-    final url = Uri.parse("http://localhost:4000/login");
+    setState(() {
+      _isLoading = true;
+    });
 
-    final response = await http.post(
-      url,
-      headers: {"Content-Type": "application/json"},
-      body: jsonEncode({"email": email, "password": password}),
-    );
+    final url = Uri.parse("http://172.20.10.6:4000/auth/login");
 
-    final data = jsonDecode(response.body);
+    try {
+      final response = await http.post(
+        url,
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({"email": email, "password": password}),
+      );
 
-    if (response.statusCode == 200) {
-      print("Login Successful");
-      print("user: ${data['user']}");
-    } else {
-      print("Login failed: ${data['message']}");
+      setState(() {
+        _isLoading = false;
+      });
+
+      // SUCCESS (200)
+      if (response.statusCode == 200) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("Login successful!"),
+            backgroundColor: Colors.green,
+          ),
+        );
+
+        // Navigate to home screen
+        Future.delayed(Duration(seconds: 1), () {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => HomePage()),
+          );
+        });
+        return;
+      }
+
+      // USER NOT FOUND (404)
+      if (response.statusCode == 404) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("Account not found."),
+            backgroundColor: Colors.orange,
+          ),
+        );
+        return;
+      }
+
+      // WRONG PASSWORD (401)
+      if (response.statusCode == 401) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("Incorrect password."),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
+      // Other backend errors
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Login failed. Try again."),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Network error. Please try again."),
+          backgroundColor: Colors.red,
+        ),
+      );
     }
   }
 
@@ -174,9 +238,15 @@ class _LoginScreenState extends State<LoginScreen> {
                     child: Padding(
                       padding: const EdgeInsets.only(top: 12.0, bottom: 20.0),
                       child: ElevatedButton(
-                        onPressed: () {
-                          login(emailController.text, passwordController.text);
-                        },
+                        onPressed:
+                            _isLoading
+                                ? null
+                                : () {
+                                  login(
+                                    emailController.text,
+                                    passwordController.text,
+                                  );
+                                },
                         child: Padding(
                           padding: const EdgeInsets.only(
                             top: 18.0,
@@ -184,10 +254,20 @@ class _LoginScreenState extends State<LoginScreen> {
                             right: 74.0,
                             bottom: 18.0,
                           ),
-                          child: Text(
-                            "Log In",
-                            style: TextStyle(color: Colors.black),
-                          ),
+                          child:
+                              _isLoading
+                                  ? SizedBox(
+                                    width: 22,
+                                    height: 22,
+                                    child: CircularProgressIndicator(
+                                      color: Colors.white,
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                  : Text(
+                                    "Log In",
+                                    style: TextStyle(color: Colors.black),
+                                  ),
                         ),
                       ),
                     ),

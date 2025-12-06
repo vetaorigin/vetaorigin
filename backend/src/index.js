@@ -67,24 +67,26 @@ app.use(
 //   })
 // );
 
-// ⬇️ DEV SESSION (LOCAL TESTING)
 app.use(
   session({
     secret: process.env.SESSION_SECRET,
     resave: false,
     saveUninitialized: false,
-    cookie: {
-      httpOnly: true,
-      secure: false,     // must be false locally
-      sameSite: "lax",   // allow frontend on 5500
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-    },
+    cookie: { httpOnly: true, maxAge: 7 * 24 * 60 * 60 * 1000 }, // 7 days
   })
 );
 
-// -------------------------
-// 5. ROUTES
-// -------------------------
+app.use(
+  cors({
+    origin: "*", // for testing only, lock down in production
+    credentials: true,
+  })
+);
+
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// Routes
 app.use("/auth", authRoutes);
 app.use("/tts", ttsRoutes);
 app.use("/stt", sttRoutes);
@@ -113,6 +115,6 @@ app.use((err, req, res, next) => {
 // 6. START SERVER
 // -------------------------
 const PORT = process.env.PORT || 4000;
-app.listen(PORT, () => {
-  logger.info(`veta origin backend running on port ${PORT}`);
+app.listen(PORT, "0.0.0.0", () => {
+  logger.info(`VoiceBridge backend running on port ${PORT}`);
 });
