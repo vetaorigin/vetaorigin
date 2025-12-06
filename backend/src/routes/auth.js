@@ -1,6 +1,6 @@
 // routes/auth.js
 import express from "express";
-import { signup, login, me } from "../controllers/authController.js";
+import { signup, login, logout, me } from "../controllers/authController.js";
 
 const router = express.Router();
 
@@ -14,6 +14,11 @@ router.post("/signup", signup);
  */
 router.post("/login", login);
 
+/**
+ * @route POST /auth/logout
+ */
+ 
+router.post("/logout", logout);
 /**
  * @route GET /auth/me
  */

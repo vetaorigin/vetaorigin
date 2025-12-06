@@ -3,26 +3,33 @@
 export const TIERS = {
   free: {
     name: "free",
-    ttsLimit: 20 * 60, // 20 minutes
-    sttLimit: 20 * 60,
-    s2sLimit: 20 * 60,
+    ttsLimit: 10,   // 10 requests per day
+    sttLimit: 10,
+    s2sLimit: 10,
+    chatLimit: 10,
   },
+
   basic: {
     name: "basic",
-    ttsLimit: 60 * 60, // 60 minutes
-    sttLimit: 60 * 60,
-    s2sLimit: 60 * 60,
+    ttsLimit: 300,  // 300 requests per day
+    sttLimit: 300,
+    s2sLimit: 300,
+    chatLimit: 300,
   },
+
   pro: {
     name: "pro",
-    ttsLimit: 300 * 60, // 300 minutes
-    sttLimit: 300 * 60,
-    s2sLimit: 300 * 60,
+    ttsLimit: 3000, // 3000 requests per day
+    sttLimit: 3000,
+    s2sLimit: 3000,
+    chatLimit: 3000,
   },
+
   enterprise: {
     name: "enterprise",
     ttsLimit: Infinity,
     sttLimit: Infinity,
     s2sLimit: Infinity,
+    chatLimit: Infinity,
   },
 };

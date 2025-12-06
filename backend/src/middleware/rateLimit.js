@@ -6,7 +6,7 @@ const logger = initLogger();
 
 /**
  * Middleware to check if user has enough quota for the operation
- * @param {"tts"|"stt"|"s2s"} mode
+ * @param {"tts"|"stt"|"s2s"|"chat"} mode
  */
 export const rateLimit = (mode) => {
   return async (req, res, next) => {

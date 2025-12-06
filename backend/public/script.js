@@ -1,109 +1,167 @@
-const API = "http://localhost:4000"; // Change to your backend URL
-const textInput = document.getElementById("textInput");
-const messagesDiv = document.getElementById("messages");
-const audioElement = document.getElementById("tts-audio");
+// script.js (dashboard + chat + usage)
+const API = "http://localhost:4000"; 
 
-// ------------------ AUTH ------------------
-async function login() {
-  const email = document.getElementById("email").value;
-  const password = document.getElementById("password").value;
+// DOM elements
+const logoutBtn = document.getElementById("logoutBtn");
+const usageText = document.getElementById("usageText");
+const chatMessages = document.getElementById("chatMessages");
+const chatInput = document.getElementById("chatInput");
+const chatSendBtn = document.getElementById("chatSendBtn");
 
-  const res = await fetch(`${API}/auth/login`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
+// Universal fetch handler
+async function fetchJson(url, opts = {}) {
+  const options = {
     credentials: "include",
-    body: JSON.stringify({ email, password })
-  });
-
-  if (res.ok) {
-    alert("Login successful!");
-    document.getElementById("authSection").classList.add("hidden");
-    document.getElementById("appSection").classList.remove("hidden");
-  } else {
-    const data = await res.json();
-    alert(data.msg || "Login failed");
-  }
-}
-
-async function registerUser() {
-  const username = document.getElementById("regUsername").value;
-  const email = document.getElementById("regEmail").value;
-  const password = document.getElementById("regPassword").value;
-
-  const res = await fetch(`${API}/auth/register`, {
-    method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ username, email, password })
-  });
+    ...opts
+  };
 
-  if (res.ok) {
-    alert("Registration successful! Please login.");
-    showLogin();
-  } else {
+  const res = await fetch(url, options);
+  let data = null;
+
+  try {
+    data = await res.json();
+  } catch (e) {}
+
+  return { res, data };
+}
+
+// Ensure the user is logged in
+async function ensureAuth() {
+  const { res, data } = await fetchJson(`${API}/auth/me`);
+  if (!res.ok) {
+    window.location.href = "./auth.html";
+    return null;
+  }
+  return data.user;
+}
+
+// Page init
+(async function init() {
+  const user = await ensureAuth();
+  if (!user) return;
+
+  document.title = `${user.username} - VoiceBridge`;
+
+  loadUsage();
+  setInterval(loadUsage, 15000);
+})();
+
+async function logout() {
+  try {
+    const res = await fetch(`${API}/auth/logout`, {
+      method: "POST",
+      credentials: "include"
+    });
+
     const data = await res.json();
-    alert(data.msg || "Registration failed");
+    console.log(data);
+
+    // Clear UI after logout
+    localStorage.removeItem("chatId");
+    document.getElementById("messages").innerHTML = "";
+    alert("Logged out");
+  } catch (err) {
+    console.error("Logout failed", err);
   }
 }
 
-function showRegister() {
-  document.getElementById("authSection").classList.add("hidden");
-  document.getElementById("registerSection").classList.remove("hidden");
+// Load subscription + usage
+async function loadUsage() {
+  const { res, data } = await fetchJson(`${API}/subscription/me`);
+
+  if (!res.ok || !data) {
+    usageText.textContent = "Usage unavailable";
+    return;
+  }
+
+  if (data.usage) {
+    const u = data.usage;
+
+    const chat = u.chat || { used: 0, limit: 0 };
+    const tts = u.tts || { used: 0, limit: 0 };
+    const stt = u.stt || { used: 0, limit: 0 };
+
+    usageText.textContent = `Chat: ${chat.used}/${chat.limit} | TTS: ${tts.used}/${tts.limit} | STT: ${stt.used}/${stt.limit}`;
+  } else {
+    usageText.textContent = "Usage OK";
+  }
 }
 
-function showLogin() {
-  document.getElementById("registerSection").classList.add("hidden");
-  document.getElementById("authSection").classList.remove("hidden");
-}
-
-// ------------------ MESSAGES ------------------
-function addMessage(text, sender = "user") {
-  const div = document.createElement("div");
-  div.textContent = text;
-  div.className = sender === "user" ? "text-right mb-2" : "text-left mb-2";
-  messagesDiv.appendChild(div);
-  messagesDiv.scrollTop = messagesDiv.scrollHeight;
-}
-
-// ------------------ TEXT TO SPEECH ------------------
-async function sendTTS() {
-  const text = textInput.value.trim();
+// -------------------------
+// CHAT
+// -------------------------
+chatSendBtn?.addEventListener("click", async () => {
+  const text = chatInput.value.trim();
   if (!text) return;
 
-  addMessage(`You: ${text}`, "user");
+  appendMessage("user", text);
+  chatInput.value = "";
 
+  const { res, data } = await fetchJson(`${API}/chat/send`, {
+    method: "POST",
+    body: JSON.stringify({ message: text })
+  });
+
+  if (!res.ok || !data) {
+    appendMessage("ai", data?.msg || "Server error");
+    return;
+  }
+
+  appendMessage("ai", data.reply || "No reply from server");
+
+  loadUsage();
+});
+
+// Append chat messages to UI
+function appendMessage(sender, text) {
+  if (!chatMessages) return;
+
+  const row = document.createElement("div");
+  row.className = sender === "user" ? "text-right mb-2" : "text-left mb-2";
+
+  const bubble = document.createElement("div");
+  bubble.className =
+    sender === "user"
+      ? "inline-block bg-blue-600 text-white px-3 py-2 rounded-lg"
+      : "inline-block bg-gray-200 text-gray-900 px-3 py-2 rounded-lg";
+
+  bubble.textContent = text;
+
+  // AI has a speaker button
+  if (sender === "ai") {
+    const speaker = document.createElement("button");
+    speaker.innerText = "🔊";
+    speaker.className = "ml-2 text-sm";
+    speaker.onclick = () => playTTS(text);
+
+    row.appendChild(bubble);
+    row.appendChild(speaker);
+  } else {
+    row.appendChild(bubble);
+  }
+
+  chatMessages.appendChild(row);
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+// TTS player
+async function playTTS(text) {
   try {
     const res = await fetch(`${API}/tts`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
       credentials: "include",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ text })
     });
 
-    if (!res.ok) {
-      const data = await res.json();
-      return alert(data.msg || "TTS failed");
-    }
+    if (!res.ok) return alert("TTS failed");
 
-    const blob = await res.blob();
-    const url = URL.createObjectURL(blob);
-    audioElement.src = url;
-    audioElement.hidden = false;
-    audioElement.play();
+    const audioBlob = await res.blob();
+    const url = URL.createObjectURL(audioBlob);
 
-    addMessage(`🔊 Played: "${text}"`, "bot");
-
+    new Audio(url).play();
   } catch (err) {
-    console.error(err);
-    alert("TTS error, check backend logs");
+    console.error("TTS error:", err);
   }
-
-  textInput.value = "";
 }
-
-// ------------------ ENTER KEY ------------------
-textInput.addEventListener("keydown", (e) => {
-  if (e.key === "Enter" && !e.shiftKey) {
-    e.preventDefault();
-    sendTTS();
-  }
-});

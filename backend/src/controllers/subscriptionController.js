@@ -6,26 +6,42 @@ import { now } from "../utils/helper.js";
 
 const logger = initLogger();
 
+
+
 export const getSubscription = async (req, res) => {
   try {
     const userId = req.session.userId;
-    if (!userId) return res.status(401).json({ msg: "Unauthorized" });
 
-    const { data: sub, error } = await supabase
+    const { data, error } = await supabase
       .from("subscriptions")
-      .select("*")
+      .select(`
+        id,
+        plan_id,
+        expires_at,
+        plans (
+            name,
+            tts_limit,
+            stt_limit,
+            s2s_limit
+        )
+      `)
       .eq("user_id", userId)
       .maybeSingle();
 
-    if (error) throw error;
-    if (!sub) return res.json({ subscription: null });
+    if (error) {
+      console.error("SUBSCRIPTION FETCH ERROR:", error);
+      return res.status(500).json({ msg: "Failed to load subscription" });
+    }
 
-    res.json({ subscription: sub });
+    if (!data) return res.status(404).json({ msg: "No subscription found" });
+
+    res.json({ subscription: data });
   } catch (err) {
-    logger.error("Fetch subscription failed", err);
-    res.status(500).json({ msg: "Could not fetch subscription", error: err.message });
+    console.error("GET SUB ERROR:", err);
+    res.status(500).json({ msg: "Server error" });
   }
 };
+
 
 // Renew or create subscription (after payment)
 export const upsertSubscription = async (userId, plan, durationDays) => {

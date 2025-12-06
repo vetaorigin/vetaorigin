@@ -6,53 +6,101 @@ import { handleError } from "../utils/helper.js";
 
 const logger = initLogger();
 
+/* ----------------------------------------------------
+   SIGNUP
+----------------------------------------------------- */
 export const signup = async (req, res) => {
   try {
     const { username, email, password } = req.body;
+
+    // Validate
     if (!username || !email || !password)
       return res.status(400).json({ msg: "Missing fields" });
 
-    // Check if email exists
+    // Check if user exists
     const { data: existing, error: checkError } = await supabase
       .from("users")
-      .select("*")
+      .select("id")
       .eq("email", email)
       .maybeSingle();
 
-    if (checkError) handleError("Error checking existing user", checkError);
-    if (existing) return res.status(409).json({ msg: "Email already exists" });
+    if (checkError) {
+      logger.error("CHECK USER ERROR", checkError);
+      return res.status(500).json({ msg: "Error checking user" });
+    }
+
+    if (existing) {
+      return res.status(409).json({ msg: "Email already exists" });
+    }
 
     // Hash password
-    const hash = await bcrypt.hash(password, 12);
+    const hashedPassword = await bcrypt.hash(password, 12);
 
     // Insert user
-    const { data, error } = await supabase
+    const { error: insertError } = await supabase
       .from("users")
-      .insert([{ username, email, password: hash }])
-      .select()
-      .single();
+      .insert([{ username, email, password: hashedPassword }]);
 
-    if (error) handleError("Error creating user", error);
+    if (insertError) {
+      logger.error("INSERT USER ERROR", insertError);
+      return res.status(500).json({ msg: "Error creating user" });
+    }
 
-    // Set session
-    req.session.userId = data.id;
+    // Fetch created user
+    const { data: user, error: userError } = await supabase
+      .from("users")
+      .select("id, username, email")
+      .eq("email", email)
+      .maybeSingle();
 
-    logger.info("User signed up", { userId: data.id, email });
+    if (userError || !user) {
+      logger.error("FETCH NEW USER ERROR", userError);
+      return res.status(500).json({ msg: "Error fetching new user" });
+    }
+
+    // Create session
+    req.session.userId = user.id;
+
+    // Initialize usage row
+    const { error: usageError } = await supabase
+      .from("usage")
+      .insert({
+        user_id: user.id,
+        chat_used: 0,
+        tts_used: 0,
+        stt_used: 0,
+        s2s_used: 0,
+        last_reset: new Date()
+      });
+
+    if (usageError) {
+      logger.error("USAGE INIT ERROR", usageError);
+      return res.status(500).json({ msg: "Error initializing usage" });
+    }
+
+    // Response
     res.json({
       msg: "Account created",
-      user: { id: data.id, username: data.username, email: data.email },
+      user
     });
+
   } catch (err) {
-    logger.error("Signup failed", err);
+    logger.error("SIGNUP FAILED", err);
     res.status(500).json({ msg: "Server error", error: err.message });
   }
 };
 
+/* ----------------------------------------------------
+   LOGIN
+----------------------------------------------------- */
 export const login = async (req, res) => {
   try {
     const { email, password } = req.body;
-    if (!email || !password) return res.status(400).json({ msg: "Missing fields" });
 
+    if (!email || !password)
+      return res.status(400).json({ msg: "Missing fields" });
+
+    // Fetch user
     const { data: user, error } = await supabase
       .from("users")
       .select("*")
@@ -62,29 +110,67 @@ export const login = async (req, res) => {
     if (error) handleError("Error fetching user", error);
     if (!user) return res.status(401).json({ msg: "Invalid credentials" });
 
-    const ok = await bcrypt.compare(password, user.password);
-    if (!ok) return res.status(401).json({ msg: "Invalid credentials" });
+    // Compare password
+    const isValid = await bcrypt.compare(password, user.password);
+    if (!isValid) return res.status(401).json({ msg: "Invalid credentials" });
 
-    req.session.regenerate((err) => {
+    // Regenerate session
+    req.session.regenerate(err => {
       if (err) handleError("Session regeneration error", err);
+
       req.session.userId = user.id;
-      logger.info("User logged in", { userId: user.id, email });
+
+      logger.info("User logged in", { userId: user.id });
+
       res.json({
         msg: "Logged in",
-        user: { id: user.id, username: user.username, email: user.email },
+        user: {
+          id: user.id,
+          username: user.username,
+          email: user.email
+        }
       });
     });
+
   } catch (err) {
-    logger.error("Login failed", err);
+    logger.error("LOGIN FAILED", err);
     res.status(500).json({ msg: "Server error", error: err.message });
   }
 };
 
+/* ----------------------------------------------------
+   LOGOUT
+----------------------------------------------------- */
+
+export const logout = async (req, res) => {
+  try {
+    if (!req.session) {
+      return res.status(200).json({ msg: "Logged out" });
+    }
+
+    req.session.destroy((err) => {
+      if (err) {
+        return res.status(500).json({ msg: "Logout failed", error: err.message });
+      }
+      res.clearCookie("connect.sid");
+      return res.json({ msg: "Logged out successfully" });
+    });
+  } catch (err) {
+    res.status(500).json({ msg: "Logout error", error: err.message });
+  }
+};
+
+
+
+/* ----------------------------------------------------
+   CURRENT USER
+----------------------------------------------------- */
 export const me = async (req, res) => {
   try {
+
     const { data: user, error } = await supabase
       .from("users")
-      .select("id,username,email")
+      .select("id, username, email")
       .eq("id", req.session.userId)
       .maybeSingle();
 
@@ -92,8 +178,9 @@ export const me = async (req, res) => {
     if (!user) return res.status(404).json({ msg: "User not found" });
 
     res.json({ user });
+
   } catch (err) {
-    logger.error("Fetch current user failed", err);
+    logger.error("FETCH CURRENT USER FAILED", err);
     res.status(500).json({ msg: "Server error", error: err.message });
   }
 };

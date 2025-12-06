@@ -1,37 +1,55 @@
 // index.js
 import express from "express";
 import session from "express-session";
-// import pgSession from "connect-pg-simple";
 import dotenv from "dotenv";
 import path from "path";
+import cors from "cors";
 import authRoutes from "./routes/auth.js";
 import ttsRoutes from "./routes/tts.js";
 import sttRoutes from "./routes/stt.js";
+import s2sRoutes from "./routes/s2s.js";
+import chatRoutes from "./routes/chat.js";
 import translateRoutes from "./routes/translate.js";
 import subscriptionRoutes from "./routes/subscription.js";
 import paymentRoutes from "./routes/payment.js";
 import webhookController from "./controllers/webhookController.js";
 import { initLogger } from "./utils/logger.js";
-// import pkg from "pg";
-import cors from "cors";
 
 dotenv.config();
-const logger = initLogger();
-// const { Pool } = pkg;
-
 const app = express();
-app.use(express.json({ limit: "10mb" })); // handle large audio payloads
+const logger = initLogger();
+
+// -------------------------
+// 1. PARSERS (ONLY ONCE)
+// -------------------------
+app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
-// Serve static files
+// -------------------------
+// 2. STATIC FILES
+// -------------------------
 app.use("/public", express.static(path.join(process.cwd(), "public")));
 
-// Session setup
+// -------------------------
+// 3. CORS (BEFORE SESSIONS)
+// -------------------------
+app.use(
+  cors({
+    origin: process.env.FRONTEND_URL || "http://localhost:5500",
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE"],
+  })
+);
+
+// -------------------------
+// 4. SESSION (BEFORE ROUTES)
+// -------------------------
+
+// ⬇️ PRODUCTION POSTGRES SESSION STORE (READY TO USE)
+// import pgSession from "connect-pg-simple";
+// import pkg from "pg";
+// const { Pool } = pkg;
 // const PgStore = pgSession(session);
-// if (!process.env.DATABASE_URL || !process.env.SESSION_SECRET) {
-//   logger.error("DATABASE_URL or SESSION_SECRET missing in env!");
-//   process.exit(1);
-// }
 // const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
 // app.use(
@@ -42,39 +60,36 @@ app.use("/public", express.static(path.join(process.cwd(), "public")));
 //     saveUninitialized: false,
 //     cookie: {
 //       httpOnly: true,
-//       maxAge: 7 * 24 * 60 * 60 * 1000, // 1 week
 //       secure: process.env.NODE_ENV === "production",
-//       sameSite: "lax",
+//       sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+//       maxAge: 7 * 24 * 60 * 60 * 1000,
 //     },
 //   })
 // );
 
-
+// ⬇️ DEV SESSION (LOCAL TESTING)
 app.use(
   session({
     secret: process.env.SESSION_SECRET,
     resave: false,
     saveUninitialized: false,
-    cookie: { httpOnly: true, maxAge: 7 * 24 * 60 * 60 * 1000 } // 7 days
+    cookie: {
+      httpOnly: true,
+      secure: false,     // must be false locally
+      sameSite: "lax",   // allow frontend on 5500
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    },
   })
 );
 
-
-app.use(cors({
-  origin: process.env.FRONTEND_URL, // for testing only, lock down in production
-  credentials: true
-}));
-
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-
-
-
-
-// Routes
+// -------------------------
+// 5. ROUTES
+// -------------------------
 app.use("/auth", authRoutes);
 app.use("/tts", ttsRoutes);
 app.use("/stt", sttRoutes);
+app.use("/s2s", s2sRoutes);
+app.use("/chat", chatRoutes);
 app.use("/translate", translateRoutes);
 app.use("/subscription", subscriptionRoutes);
 app.use("/payment", paymentRoutes);
@@ -94,8 +109,10 @@ app.use((err, req, res, next) => {
   res.status(500).json({ msg: "Server error", error: err.message });
 });
 
-// Start server
+// -------------------------
+// 6. START SERVER
+// -------------------------
 const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => {
-  logger.info(`VoiceBridge backend running on port ${PORT}`);
+  logger.info(`veta origin backend running on port ${PORT}`);
 });

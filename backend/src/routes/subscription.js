@@ -9,6 +9,6 @@ const router = express.Router();
  * @route GET /subscription
  * Returns user's subscription info
  */
-router.get("/", requireAuth, getSubscription);
+router.get("/me", requireAuth, getSubscription);
 
 export default router;

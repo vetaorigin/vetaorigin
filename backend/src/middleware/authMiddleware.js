@@ -1,4 +1,4 @@
-// middleware/authMiddleware.js
+//middleware/authMiddleware.js
 import { initLogger } from "../utils/logger.js";
 
 const logger = initLogger();
@@ -18,3 +18,7 @@ export const requireAuth = (req, res, next) => {
     res.status(500).json({ msg: "Server error", error: err.message });
   }
 };
+
+
+
+

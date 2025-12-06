@@ -1,70 +1,45 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>VoiceBridge</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI App Dashboard</title>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
 </head>
 
-<body class="bg-gray-100 h-screen flex flex-col">
+<body class="bg-gray-100">
 
-  <!-- HEADER -->
-  <header class="bg-indigo-600 text-white text-center p-4 text-xl font-bold">
-    VoiceBridge – Multilingual Communication
-  </header>
+  <!-- NAVBAR -->
+  <nav class="bg-white shadow p-4 flex justify-between">
+    <h1 class="text-xl font-bold">AI App</h1>
+    <button onclick="logout()" id="logoutBtn" class="text-red-600 font-semibold">Logout</button>
+  </nav>
 
-  <!-- AUTH SECTION -->
-  <div id="authSection" class="flex justify-center mt-10">
-    <div class="bg-white p-6 rounded-xl shadow-md w-96">
-      <h2 class="text-xl font-semibold mb-4 text-gray-800 text-center">Login</h2>
+  <!-- MAIN CONTENT -->
+  <div class="p-4 max-w-5xl mx-auto">
 
-      <input id="email" type="email" placeholder="Email" 
-        class="w-full p-3 mb-3 border rounded-lg"/>
-
-      <input id="password" type="password" placeholder="Password" 
-        class="w-full p-3 mb-4 border rounded-lg"/>
-
-      <button onclick="login()" class="w-full bg-indigo-600 text-white p-3 rounded-lg">Login</button>
-
-      <p class="text-center text-sm mt-3 text-gray-500">
-        No account? <span onclick="showRegister()" class="text-indigo-600 cursor-pointer">Register</span>
-      </p>
-    </div>
-  </div>
-
-  <!-- REGISTER SECTION -->
-  <div id="registerSection" class="hidden flex justify-center mt-10">
-    <div class="bg-white p-6 rounded-xl shadow-md w-96">
-      <h2 class="text-xl font-semibold mb-4 text-gray-800 text-center">Register</h2>
-
-      <input id="regUsername" placeholder="Username" class="w-full p-3 mb-3 border rounded-lg"/>
-      <input id="regEmail" type="email" placeholder="Email" class="w-full p-3 mb-3 border rounded-lg"/>
-      <input id="regPassword" type="password" placeholder="Password" class="w-full p-3 mb-4 border rounded-lg"/>
-
-      <button onclick="registerUser()" class="w-full bg-green-600 text-white p-3 rounded-lg">Register</button>
-
-      <p class="text-center text-sm mt-3 text-gray-500">
-        Already registered? <span onclick="showLogin()" class="text-indigo-600 cursor-pointer">Login</span>
-      </p>
-    </div>
-  </div>
-
-  <!-- MAIN APP -->
-  <div id="appSection" class="hidden flex flex-col h-full">
-
-    <div class="flex-1 overflow-y-auto p-4" id="messages"></div>
-
-    <!-- Chat Input Area -->
-    <div class="bg-white border-t p-4 flex items-center gap-3">
-      <textarea id="textInput" class="flex-1 p-3 border rounded-lg" placeholder="Type your message..."></textarea>
-      <button onclick="sendTTS()" class="bg-blue-500 text-white px-4 py-2 rounded-lg">Text → Speech</button>
+    <!-- Usage Card -->
+    <div class="bg-white p-4 rounded shadow mb-6">
+      <h2 class="text-lg font-bold mb-2">Daily Usage</h2>
+      <p id="usageText" class="text-gray-800 text-sm">Loading...</p>
     </div>
 
-    <audio id="tts-audio" hidden></audio>
+    <!-- CHAT SECTION -->
+    <div class="bg-white p-4 mt-6 rounded shadow">
+      <h2 class="text-xl font-bold mb-3">Chat with AI</h2>
+
+      <div id="chatMessages"
+        class="border p-3 h-80 overflow-y-auto bg-gray-50 rounded mb-4 text-sm"></div>
+
+      <div class="flex items-center gap-2">
+        <input id="chatInput" type="text" class="flex-1 border p-2 rounded" placeholder="Type message...">
+        <button id="chatSendBtn"
+          class="bg-blue-600 text-white px-4 py-2 rounded">Send</button>
+      </div>
+    </div>
 
   </div>
 
-  <script src="script.js"></script>
-
+  <script src="./script.js"></script>
 </body>
 </html>
