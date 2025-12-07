@@ -18,7 +18,7 @@ const router = express.Router();
  * Body: { chatId?: string, message: string, model?: string }
  * Creates a new chat if chatId not provided, sends message to OpenAI and returns reply.
  */
-router.post("/send", requireAuth, requireSubscription, rateLimit("chat"), sendMessage);
+router.post("/", requireAuth, requireSubscription, rateLimit("chat"), sendMessage);
 
 /**
  * GET /chat/:chatId
