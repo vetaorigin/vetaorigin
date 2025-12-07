@@ -2,7 +2,7 @@
 import express from "express";
 import { translateText } from "../controllers/translateController.js";
 import { requireAuth } from "../middleware/authMiddleware.js";
-import { rateLimit } from "../middleware/ratelimit.js";
+import { rateLimit } from "../middleware/rateLimit.js";
 
 const router = express.Router();
 
