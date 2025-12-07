@@ -2,7 +2,7 @@ import express from "express";
 import { generateS2S } from "../controllers/s2sController.js";
 import { requireAuth } from "../middleware/authMiddleware.js";
 import { requireSubscription } from "../middleware/subscriptionMiddleware.js";
-import { rateLimit } from "../middleware/ratelimit.js";
+import { rateLimit } from "../middleware/rateLimit.js";
 
 const router = express.Router();
 
