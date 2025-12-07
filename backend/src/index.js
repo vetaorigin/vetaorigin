@@ -14,8 +14,8 @@ import subscriptionRoutes from "./routes/subscription.js";
 import paymentRoutes from "./routes/payment.js";
 import webhookController from "./controllers/webhookController.js";
 import { initLogger } from "./utils/logger.js";
-import pgSession from "connect-pg-simple";
-import pkg from "pg";
+// import pgSession from "connect-pg-simple";
+// import pkg from "pg";
 
 dotenv.config();
 const app = express();
@@ -48,33 +48,33 @@ app.use(
 // -------------------------
 
 // ⬇️ PRODUCTION POSTGRES SESSION STORE (READY TO USE)
- const { Pool } = pkg;
- const PgStore = pgSession(session);
- const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-
-app.use(
-  session({
-    store: new PgStore({ pool }),
-    secret: process.env.SESSION_SECRET,
-    resave: false,
-    saveUninitialized: false,
-    cookie: {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-    },
-  })
-);
+//  const { Pool } = pkg;
+//  const PgStore = pgSession(session);
+//  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
 // app.use(
 //   session({
+//     store: new PgStore({ pool }),
 //     secret: process.env.SESSION_SECRET,
 //     resave: false,
 //     saveUninitialized: false,
-//     cookie: { httpOnly: true, maxAge: 7 * 24 * 60 * 60 * 1000 }, // 7 days
+//     cookie: {
+//       httpOnly: true,
+//       secure: process.env.NODE_ENV === "production",
+//       sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+//       maxAge: 7 * 24 * 60 * 60 * 1000,
+//     },
 //   })
 // );
+
+app.use(
+  session({
+    secret: process.env.SESSION_SECRET,
+    resave: false,
+    saveUninitialized: false,
+    cookie: { httpOnly: true, maxAge: 7 * 24 * 60 * 60 * 1000 }, // 7 days
+  })
+);
 
 app.use(
   cors({
