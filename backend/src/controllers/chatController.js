@@ -11,6 +11,9 @@ const logger = initLogger();
  * Body: { chatId?, message, model? }
  */
 export const sendMessage = async (req, res) => {
+  console.log("DEBUG SESSION:", req.session);
+  console.log("DEBUG BODY:", req.body);
+
   try {
     const userId = req.session?.userId;
     if (!userId) return res.status(401).json({ msg: "Unauthorized" });
