@@ -102,7 +102,7 @@ export const sendMessage = async (req, res) => {
     try {
       // Use the openai client instance from config/openaiConfig.js
       const resp = await openai.chat.completions.create({
-        model,
+        model: model,
         messages: messagesForOpenAI,
         max_tokens: 1000
       });
