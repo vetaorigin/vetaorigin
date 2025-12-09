@@ -99,7 +99,7 @@ export const sendMessage = async (req, res) => {
     // Append current user message (ensures latest message is included)
     messagesForOpenAI.push({ role: "user", content: message });
 
-    4️⃣ Call OpenAI
+    //4️⃣ Call OpenAI
      logger.info("Calling OpenAI", { userId, chatId: chat.id, model });
      let assistantText = "";
      try {
