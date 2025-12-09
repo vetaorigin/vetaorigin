@@ -97,28 +97,46 @@ export const sendMessage = async (req, res) => {
     messagesForOpenAI.push({ role: "user", content: message });
 
     // 4️⃣ Call OpenAI
-    logger.info("Calling OpenAI", { userId, chatId: chat.id, model });
-    let assistantText = "";
-    try {
-      // Use the openai client instance from config/openaiConfig.js
-      const resp = await openai.chat.completions.generate({
-        model,
-        messages: messagesForOpenAI,
-        max_tokens: 1000
-    });
+  //   logger.info("Calling OpenAI", { userId, chatId: chat.id, model });
+  //   let assistantText = "";
+  //   try {
+  //     // Use the openai client instance from config/openaiConfig.js
+  //     const resp = await openai.chat.completions.generate({
+  //       model,
+  //       messages: messagesForOpenAI,
+  //       max_tokens: 1000
+  //   });
 
-  const assistantText = resp.output_text;
+  // const assistantText = resp.output_text;
 
 
-      // defensive parsing
-      assistantText = resp?.choices?.[0]?.message?.content ?? "";
-      if (!assistantText && typeof resp === "string") assistantText = resp;
-    } catch (err) {
-      logger.error("OpenAI API error", err);
-      console.error("OPENAI ERROR DETAILS:", err);
-      // Save error message to assistant content so user sees something
-      assistantText = "Sorry — I couldn't generate a response right now.";
-    }
+  //     // defensive parsing
+  //     assistantText = resp?.choices?.[0]?.message?.content ?? "";
+  //     if (!assistantText && typeof resp === "string") assistantText = resp;
+  //   } catch (err) {
+  //     logger.error("OpenAI API error", err);
+  //     console.error("OPENAI ERROR DETAILS:", err);
+  //     // Save error message to assistant content so user sees something
+  //     assistantText = "Sorry — I couldn't generate a response right now.";
+  //   }
+
+    // 4️⃣ Call OpenAI
+logger.info("Calling OpenAI", { userId, chatId: chat.id, model });
+let assistantText = "";
+
+try {
+  const resp = await openai.responses.create({
+    model,
+    input: messagesForOpenAI, // same array you're building
+    max_output_tokens: 1000
+  });
+
+  assistantText = resp.output_text || "";
+} catch (err) {
+  logger.error("OpenAI API error", err);
+  assistantText = "Sorry — I couldn't generate a response right now.";
+}
+
 
     // 5️⃣ Save assistant message
     const { data: assistantMsg, error: assistantErr } = await supabase
