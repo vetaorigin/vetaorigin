@@ -1,4 +1,4 @@
-// src/controllers/chatController.js (CORRECTED)
+// src/controllers/chatController.js
 import { supabase } from "../services/supabaseClient.js";
 import { openai } from "../config/openaiConfig.js";
 import { initLogger } from "../utils/logger.js";
@@ -28,7 +28,7 @@ export const sendMessage = async (req, res) => {
       return res.status(400).json({ msg: "Message required" });
     }
 
-    // 0️⃣ Rate-limit check
+    // 0️⃣ Rate-limit check for text chat (1 unit per message)
     try {
       await checkUsage(userId, "chat", 1);
     } catch (err) {
@@ -36,7 +36,7 @@ export const sendMessage = async (req, res) => {
       return res.status(429).json({ msg: err.message || "Rate limit exceeded" });
     }
 
-    // 1️⃣ Ensure chat exists
+    // 1️⃣ Ensure chat exists (create if no chatId)
     if (chatId) {
       const { data: c, error: cErr } = await supabase
         .from("chats")
@@ -78,10 +78,11 @@ export const sendMessage = async (req, res) => {
 
     if (userMsgErr) {
       logger.error("Insert user message error", userMsgErr);
+      // not fatal — continue but warn
     }
     userMsg = uMsg;
 
-    // 3️⃣ Build context
+    // 3️⃣ Build context: last N messages (including current) — order ascending
     const { data: history, error: historyErr } = await supabase
       .from("messages")
       .select("user_role, content")
@@ -100,42 +101,42 @@ export const sendMessage = async (req, res) => {
       };
     });
 
-    // Append current user message
+    // Append current user message (ensures latest message is included)
     messagesForOpenAI.push({ role: "user", content: message });
 
-    // 4️⃣ Call OpenAI (CORRECTED BLOCK)
+    // 4️⃣ Call OpenAI (FIXED BLOCK)
     logger.info("Calling OpenAI", { userId, chatId: chat.id, model });
-    let assistantText = friendyError; // Default to error message
+    let assistantText = friendyError;
     let aiGenerationFailed = false;
 
     try {
-      const resp = await openai.chat.completions.create({ // CORRECTED client method
+      // ✅ CORRECTED: Using standard OpenAI client method and parameters
+      const resp = await openai.chat.completions.create({
         model,
-        messages: messagesForOpenAI, // CORRECTED key
-        max_tokens: 1000 // CORRECTED key
+        messages: messagesForOpenAI, // Correct key
+        max_tokens: 1000 // Correct key
       });
 
       // Defensive parsing
       assistantText = resp.choices?.[0]?.message?.content ?? friendyError;
       
-      // If the response is still the friendly error, flag it as a failure
       if (assistantText === friendyError) {
           aiGenerationFailed = true;
       }
 
     } catch (err) {
+      // ❌ OpenAI API error (e.g., Invalid API Key, Rate Limit, etc.)
       logger.error("OpenAI API error. Check API Key validity/rate limits.", err);
       aiGenerationFailed = true;
       assistantText = friendyError;
     }
 
-    // 🛑 CRITICAL NEW STEP: Check if AI failed and terminate the request
+    // 🛑 CRITICAL FIX: If AI failed, return a non-200 status code
     if (aiGenerationFailed) {
-        // Send a 503 Service Unavailable or 500 Internal Server Error
-        // This will trigger the DioError/non-200 handling in your Flutter client
+        // Return 503 Service Unavailable or 500 Internal Server Error
         return res.status(503).json({ 
             msg: "AI service failed to generate a reply.", 
-            reply: assistantText // Send the friendly text too, just in case
+            reply: assistantText // Still sends the friendly error for display
         });
     }
 
@@ -157,7 +158,7 @@ export const sendMessage = async (req, res) => {
     }
     assistantMsg = aMsg;
 
-    // 6️⃣ Auto-name chat
+    // 6️⃣ Auto-name chat if missing (first non-empty message trimmed)
     if (!chat.title || chat.title.trim() === "") {
       const candidate = (message || assistantText || "").substring(0, 60).trim();
       if (candidate) {
@@ -169,10 +170,11 @@ export const sendMessage = async (req, res) => {
       }
     }
 
-    // 7️⃣ Increment usage
+    // 7️⃣ Increment usage (text)
     try {
       await addUsage(userId, "chat", 1);
     } catch (err) {
+      // log but don't fail the response — user still gets reply
       logger.error("Failed to increment usage", err);
     }
 
@@ -180,19 +182,155 @@ export const sendMessage = async (req, res) => {
     res.json({
       chatId: chat.id,
       reply: assistantText,
-      userMessage: userMsg,
-      assistantMessage: assistantMsg
+      userMessage: userMsg ?? null,
+      assistantMessage: assistantMsg ?? null
     });
   } catch (err) {
-    // This is for unexpected, general errors (DB connection lost, etc.)
     logger.error("sendMessage error", err);
-    res.status(500).json({ msg: "Internal server error", error: err.message });
+    res.status(500).json({ msg: "Chat error", error: err.message });
   }
 };
 
+/**
+ * getChat - returns chat metadata + all messages
+ */
+export const getChat = async (req, res) => {
+  try {
+    const userId = req.session?.userId;
+    if (!userId) return res.status(401).json({ msg: "Unauthorized" });
 
-// ... rest of the functions (getChat, listChats, renameChat, deleteChat) ...
-// The rest of your code remains unchanged.
+    const { chatId } = req.params;
+    const { data: chat, error: chatErr } = await supabase
+      .from("chats")
+      .select("*")
+      .eq("id", chatId)
+      .maybeSingle();
+
+    if (chatErr) {
+      logger.error("Fetch chat error", chatErr);
+      return res.status(500).json({ msg: "Could not fetch chat" });
+    }
+    if (!chat || chat.user_id !== userId) return res.status(404).json({ msg: "Not found" });
+
+    const { data: messages, error: msgErr } = await supabase
+      .from("messages")
+      .select("id, user_role, content, created_at")
+      .eq("chat_id", chatId)
+      .order("created_at", { ascending: true });
+
+    if (msgErr) logger.error("Get messages error", msgErr);
+
+    res.json({ chat, messages: messages || [] });
+  } catch (err) {
+    logger.error("getChat error", err);
+    res.status(500).json({ msg: "Server error", error: err.message });
+  }
+};
+
+/**
+ * listChats - paginated list of user's chats
+ * Query params: ?page=1&limit=20
+ */
+export const listChats = async (req, res) => {
+  try {
+    const userId = req.session?.userId;
+    if (!userId) return res.status(401).json({ msg: "Unauthorized" });
+
+    const page = Math.max(1, parseInt(req.query.page || "1", 10));
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit || "20", 10)));
+    const from = (page - 1) * limit;
+    const to = from + limit - 1;
+
+    const { data, error } = await supabase
+      .from("chats")
+      .select("id, title, created_at, updated_at")
+      .eq("user_id", userId)
+      .order("updated_at", { ascending: false })
+      .range(from, to);
+
+    if (error) {
+      logger.error("listChats error", error);
+      return res.status(500).json({ msg: "Could not list chats" });
+    }
+
+    res.json({ chats: data || [], page, limit });
+  } catch (err) {
+    logger.error("listChats error", err);
+    res.status(500).json({ msg: "Server error", error: err.message });
+  }
+};
+
+/**
+ * renameChat
+ */
+export const renameChat = async (req, res) => {
+  try {
+    const userId = req.session?.userId;
+    const { chatId } = req.params;
+    const { title } = req.body;
+
+    if (!userId) return res.status(401).json({ msg: "Unauthorized" });
+    if (!title || !title.trim()) return res.status(400).json({ msg: "Title required" });
+
+    // ensure owner
+    const { data: chat, error: chatErr } = await supabase
+      .from("chats")
+      .select("user_id")
+      .eq("id", chatId)
+      .maybeSingle();
+
+    if (chatErr) {
+      logger.error("renameChat fetch error", chatErr);
+      return res.status(500).json({ msg: "Could not rename chat" });
+    }
+    if (!chat || chat.user_id !== userId) return res.status(404).json({ msg: "Not found" });
+
+    const { error } = await supabase.from("chats").update({ title }).eq("id", chatId);
+    if (error) {
+      logger.error("renameChat update error", error);
+      return res.status(500).json({ msg: "Could not rename chat" });
+    }
+
+    res.json({ msg: "Renamed" });
+  } catch (err) {
+    logger.error("renameChat error", err);
+    res.status(500).json({ msg: "Server error", error: err.message });
+  }
+};
+
+/**
+ * deleteChat
+ */
+export const deleteChat = async (req, res) => {
+  try {
+    const userId = req.session?.userId;
+    const { chatId } = req.params;
+    if (!userId) return res.status(401).json({ msg: "Unauthorized" });
+
+    const { data: chat, error: chatErr } = await supabase
+      .from("chats")
+      .select("user_id")
+      .eq("id", chatId)
+      .maybeSingle();
+
+    if (chatErr) {
+      logger.error("deleteChat fetch error", chatErr);
+      return res.status(500).json({ msg: "Could not delete chat" });
+    }
+    if (!chat || chat.user_id !== userId) return res.status(404).json({ msg: "Not found" });
+
+    const { error } = await supabase.from("chats").delete().eq("id", chatId);
+    if (error) {
+      logger.error("deleteChat error", error);
+      return res.status(500).json({ msg: "Could not delete chat" });
+    }
+
+    res.json({ msg: "Deleted" });
+  } catch (err) {
+    logger.error("deleteChat error", err);
+    res.status(500).json({ msg: "Server error", error: err.message });
+  }
+};
 
 export default {
   sendMessage,
