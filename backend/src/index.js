@@ -48,40 +48,40 @@ app.use(
 // -------------------------
 
 // ⬇️ PRODUCTION POSTGRES SESSION STORE (READY TO USE)
-//  const { Pool } = pkg;
-//  const PgStore = pgSession(session);
-//  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-
-// app.use(
-//   session({
-//     store: new PgStore({ pool }),
-//     secret: process.env.SESSION_SECRET,
-//     resave: false,
-//     saveUninitialized: false,
-//     cookie: {
-//       httpOnly: true,
-//       secure: process.env.NODE_ENV === "production",
-//       sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
-//       maxAge: 7 * 24 * 60 * 60 * 1000,
-//     },
-//   })
-// );
+ const { Pool } = pkg;
+ const PgStore = pgSession(session);
+ const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
 app.use(
   session({
+    store: new PgStore({ pool }),
     secret: process.env.SESSION_SECRET,
     resave: false,
     saveUninitialized: false,
-    cookie: { httpOnly: true, maxAge: 7 * 24 * 60 * 60 * 1000 }, // 7 days
+    cookie: {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    },
   })
 );
 
-app.use(
-  cors({
-    origin: "*", // for testing only, lock down in production
-    credentials: true,
-  })
-);
+// app.use(
+//   session({
+//     secret: process.env.SESSION_SECRET,
+//     resave: false,
+//     saveUninitialized: false,
+//     cookie: { httpOnly: true, maxAge: 7 * 24 * 60 * 60 * 1000 }, // 7 days
+//   })
+// );
+
+// app.use(
+//   cors({
+//     origin: "*", // for testing only, lock down in production
+//     credentials: true,
+//   })
+// );
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
