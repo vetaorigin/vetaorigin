@@ -214,7 +214,7 @@ export async function addUsage(userId, mode) {
 
     const { error } = await supabase.rpc("increment_usage_v2", {
       userid: userId,
-      fieldname: mode,
+      mode_name: mode,
       amount: ONE_REQUEST,
     });
 
