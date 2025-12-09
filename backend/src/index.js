@@ -14,8 +14,8 @@ import subscriptionRoutes from "./routes/subscription.js";
 import paymentRoutes from "./routes/payment.js";
 import webhookController from "./controllers/webhookController.js";
 import { initLogger } from "./utils/logger.js";
-// import pgSession from "connect-pg-simple";
-// import pkg from "pg";
+import pgSession from "connect-pg-simple";
+import pkg from "pg";
 
 dotenv.config();
 const app = express();
