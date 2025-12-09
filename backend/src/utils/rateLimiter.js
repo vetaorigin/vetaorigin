@@ -212,7 +212,7 @@ export async function addUsage(userId, mode) {
       throw new Error("Invalid mode");
     }
 
-    const { error } = await supabase.rpc("increment_usage", {
+    const { error } = await supabase.rpc("increment_usage_v2", {
       userid: userId,
       fieldname: mode,
       amount: ONE_REQUEST,
