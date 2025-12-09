@@ -19,6 +19,18 @@ export const sendMessage = async (req, res) => {
   let chat = null;
   const friendyError = "Sorry — I couldn't generate a response right now.";
 
+  // src/controllers/chatController.js - Add this block near the top of sendMessage
+
+// Check if the key is available and log it directly
+if (!process.env.OPENAI_API_KEY) {
+    // If the environment variable is missing, log a HUGE warning and return 503
+    console.error("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+    console.error("!!! FATAL ERROR: OPENAI_API_KEY environment variable is MISSING. !!!");
+    console.error("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+    return res.status(503).json({ msg: "Server configuration error: AI Key missing.", reply: friendyError });
+}
+// (The rest of the sendMessage function continues below)
+
   try {
     const userId = req.session?.userId;
     if (!userId) return res.status(401).json({ msg: "Unauthorized" });
