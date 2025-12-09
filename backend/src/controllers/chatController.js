@@ -101,17 +101,21 @@ export const sendMessage = async (req, res) => {
     let assistantText = "";
     try {
       // Use the openai client instance from config/openaiConfig.js
-      const resp = await openai.chat.completions.create({
-        model: model,
+      const resp = await openai.chat.completions.generate({
+        model,
         messages: messagesForOpenAI,
         max_tokens: 1000
-      });
+    });
+
+  const assistantText = resp.output_text;
+
 
       // defensive parsing
       assistantText = resp?.choices?.[0]?.message?.content ?? "";
       if (!assistantText && typeof resp === "string") assistantText = resp;
     } catch (err) {
       logger.error("OpenAI API error", err);
+      console.error("OPENAI ERROR DETAILS:", err);
       // Save error message to assistant content so user sees something
       assistantText = "Sorry — I couldn't generate a response right now.";
     }
