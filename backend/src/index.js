@@ -1,4 +1,3 @@
-// index.js
 import express from "express";
 import session from "express-session";
 import dotenv from "dotenv";
@@ -14,79 +13,50 @@ import subscriptionRoutes from "./routes/subscription.js";
 import paymentRoutes from "./routes/payment.js";
 import webhookController from "./controllers/webhookController.js";
 import { initLogger } from "./utils/logger.js";
-import pgSession from "connect-pg-simple";
-import pkg from "pg";
 
 dotenv.config();
 const app = express();
 const logger = initLogger();
 
 // -------------------------
-// 1. PARSERS (ONLY ONCE)
+// 1. CORS (MUST BE FIRST)
+// -------------------------
+app.use(
+  cors({
+    origin: "*", // allow all for testing
+    credentials: true,
+  })
+);
+
+// -------------------------
+// 2. PARSERS (ONLY ONCE)
 // -------------------------
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
 // -------------------------
-// 2. STATIC FILES
+// 3. STATIC FILES
 // -------------------------
 app.use("/public", express.static(path.join(process.cwd(), "public")));
 
 // -------------------------
-// 3. CORS (BEFORE SESSIONS)
+// 4. SESSION
 // -------------------------
-app.use(
-  cors({
-    origin: process.env.FRONTEND_URL || "http://localhost:5500",
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "DELETE"],
-  })
-);
-
-// -------------------------
-// 4. SESSION (BEFORE ROUTES)
-// -------------------------
-
-// ⬇️ PRODUCTION POSTGRES SESSION STORE (READY TO USE)
- const { Pool } = pkg;
- const PgStore = pgSession(session);
- const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-
 app.use(
   session({
-    store: new PgStore({ pool }),
     secret: process.env.SESSION_SECRET,
     resave: false,
     saveUninitialized: false,
     cookie: {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
       maxAge: 7 * 24 * 60 * 60 * 1000,
     },
   })
 );
 
-// app.use(
-//   session({
-//     secret: process.env.SESSION_SECRET,
-//     resave: false,
-//     saveUninitialized: false,
-//     cookie: { httpOnly: true, maxAge: 7 * 24 * 60 * 60 * 1000 }, // 7 days
-//   })
-// );
-
-// app.use(
-//   cors({
-//     origin: "*", // for testing only, lock down in production
-//     credentials: true,
-//   })
-// );
-
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-
-// Routes
+// -------------------------
+// 5. ROUTES
+// -------------------------
 app.use("/auth", authRoutes);
 app.use("/tts", ttsRoutes);
 app.use("/stt", sttRoutes);
