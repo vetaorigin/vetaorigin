@@ -104,17 +104,17 @@ export const sendMessage = async (req, res) => {
     // Append current user message (ensures latest message is included)
     messagesForOpenAI.push({ role: "user", content: message });
 
-    // 4️⃣ Call OpenAI (FIXED BLOCK)
+    // 4️⃣ Call OpenAI (MODIFIED LOGGING BLOCK)
     logger.info("Calling OpenAI", { userId, chatId: chat.id, model });
     let assistantText = friendyError;
     let aiGenerationFailed = false;
 
     try {
-      // ✅ CORRECTED: Using standard OpenAI client method and parameters
+      // Corrected OpenAI call (as implemented in the last step)
       const resp = await openai.chat.completions.create({
         model,
-        messages: messagesForOpenAI, // Correct key
-        max_tokens: 1000 // Correct key
+        messages: messagesForOpenAI,
+        max_tokens: 1000
       });
 
       // Defensive parsing
@@ -125,11 +125,18 @@ export const sendMessage = async (req, res) => {
       }
 
     } catch (err) {
-      // ❌ OpenAI API error (e.g., Invalid API Key, Rate Limit, etc.)
-      logger.error("OpenAI API error. Check API Key validity/rate limits.", err);
+      // 🛑 CRITICAL FIX: Use console.error directly and serialize the error
+      console.error("### OPENAI API ERROR (MUST CHECK RENDER LOGS):");
+      
+      // Print the full error object as a JSON string for maximum detail capture
+      // Note: OpenAI errors are often plain objects, so JSON.stringify is reliable here.
+      console.error(JSON.stringify(err, null, 2)); 
+      
       aiGenerationFailed = true;
       assistantText = friendyError;
     }
+
+    // ... (rest of the function continues as before, including the 503 check)
 
     // 🛑 CRITICAL FIX: If AI failed, return a non-200 status code
     if (aiGenerationFailed) {
