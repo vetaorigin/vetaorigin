@@ -60,19 +60,19 @@ export const signup = async (req, res) => {
         }
 
         /* ----------------------------------------------------
-            INSERT DEFAULT FREE SUBSCRIPTION
+            INSERT DEFAULT FREE SUBSCRIPTION (Application Logic)
         ----------------------------------------------------- */
+        const subscriptionData = await upsertSubscription(user.id, FREE_PLAN_UUID);
 
-        const subError = await upsertSubscription(user.id, FREE_PLAN_UUID);
-
-        if (subError) {
-            logger.error("SUBSCRIPTION INIT ERROR", subError);
-            return res.status(500).json({ msg: "Error creating subscription" });
+        // 🚨 CRITICAL FIX: The service returns 'null' on failure, so we check for NOT data.
+        if (!subscriptionData) { 
+            logger.error("SUBSCRIPTION INIT FAILED", { userId: user.id, planId: FREE_PLAN_UUID });
+            // If this fails, the account is created, but the plan isn't assigned, so we error out.
+            return res.status(500).json({ msg: "Error creating subscription" }); 
         }
 
         /* ----------------------------------------------------
-            PREVIOUS USAGE ROW INSERTION REMOVED (FIXED)
-            New rate limiter system requires NO initial usage row.
+            OLD USAGE ROW INSERTION REMAINS REMOVED
         ----------------------------------------------------- */
 
         // ------------------------------
@@ -88,10 +88,9 @@ export const signup = async (req, res) => {
     }
 };
 
-
-/* ----------------------------------------------------
-    LOGIN
------------------------------------------------------ */
+// ----------------------------------------------------
+// LOGIN
+// ----------------------------------------------------
 export const login = async (req, res) => {
     try {
         const { email, password } = req.body;
@@ -136,10 +135,9 @@ export const login = async (req, res) => {
     }
 };
 
-
-/* ----------------------------------------------------
-    LOGOUT
------------------------------------------------------ */
+// ----------------------------------------------------
+// LOGOUT
+// ----------------------------------------------------
 export const logout = async (req, res) => {
     try {
         if (!req.session)
@@ -158,10 +156,9 @@ export const logout = async (req, res) => {
     }
 };
 
-
-/* ----------------------------------------------------
-    CURRENT USER
------------------------------------------------------ */
+// ----------------------------------------------------
+// CURRENT USER
+// ----------------------------------------------------
 export const me = async (req, res) => {
     try {
         if (!req.session?.userId) {
