@@ -1,30 +1,50 @@
-// routes/payment.js
+
+// src/routes/payment.js
 import express from "express";
-import { initiatePayment } from "../payments/flutterwave.js";
-import { requireAuth } from "../middleware/authMiddleware.js";
+import { initPayment, verifyPayment } from "../controllers/paymentController.js";
 
 const router = express.Router();
 
-/**
- * @route POST /payment/initiate
- * Initiate a Flutterwave payment
- */
-router.post("/initiate", requireAuth, async (req, res) => {
-  try {
-    const { amount, currency, plan, durationDays } = req.body;
-    const userEmail = req.session.email || req.body.email; // fallback
+// initialize transaction
+router.post("/init", initPayment);
 
-    const txRef = `tx-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-    const payment = await initiatePayment(amount, currency, userEmail, txRef, {
-      plan,
-      duration: durationDays,
-      userId: req.session.userId,
-    });
+// optional server-side verify
+router.get("/verify", verifyPayment);
 
-    res.json(payment);
-  } catch (err) {
-    res.status(500).json({ msg: "Payment initiation failed", error: err.message });
-  }
-});
-
+// webhook endpoint (note: webhook route registered in index.js with raw parser)
 export default router;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
