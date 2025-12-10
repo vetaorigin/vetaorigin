@@ -19,14 +19,13 @@ export const getSubscription = async (userId) => {
     try {
        const { data, error } = await supabase
             .from("subscriptions")
-            // 🛑 CRITICAL FIX: Explicitly cast expires_at to text and then BIGINT 
-            // to bypass the corrupted cache reading the old string value.
+            // 🛑 USE EXTRACT(EPOCH FROM ...) TO FORCE NUMERICAL TIMESTAMP
             .select(`
                 id, 
                 user_id, 
                 plan_id, 
                 created_at, 
-                expires_at::text::bigint as expires_at 
+                (EXTRACT(EPOCH FROM expires_at) * 1000)::bigint as expires_at
             `) 
             .eq("user_id", userId)
             .maybeSingle();
