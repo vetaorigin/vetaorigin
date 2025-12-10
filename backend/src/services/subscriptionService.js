@@ -17,13 +17,19 @@ const DURATION_DAYS = 30; // Standard duration for new subscriptions
 -------------------------------------------------------- */
 export const getSubscription = async (userId) => {
     try {
-        const { data, error } = await supabase
+       const { data, error } = await supabase
             .from("subscriptions")
-            // Explicitly select columns matching your DB schema (NO 'status' column)
-            .select("id, user_id, plan_id, expires_at, created_at") 
+            // 🛑 CRITICAL FIX: Explicitly cast expires_at to text and then BIGINT 
+            // to bypass the corrupted cache reading the old string value.
+            .select(`
+                id, 
+                user_id, 
+                plan_id, 
+                created_at, 
+                expires_at::text::bigint as expires_at 
+            `) 
             .eq("user_id", userId)
             .maybeSingle();
-
         if (error) {
              logger.error("SUBSCRIPTION FETCH QUERY FAILED", error);
              throw error;
