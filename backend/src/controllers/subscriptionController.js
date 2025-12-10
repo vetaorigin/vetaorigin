@@ -44,21 +44,21 @@ export const getSubscription = async (req, res) => {
 
 
 // Renew or create subscription (after payment)
-export const upsertSubscription = async (userId, plan, durationDays) => {
+export const upsertSubscription = async (userId, plan_id, durationDays) => {
   try {
     const expiresAt = now() + durationDays * 24 * 3600;
 
     const { data, error } = await supabase
       .from("subscriptions")
       .upsert(
-        { user_id: userId, plan, expires_at: expiresAt },
+        { user_id: userId, plan_id, expires_at: expiresAt },
         { onConflict: ["user_id"] }
       )
       .select()
       .single();
 
     if (error) throw error;
-    logger.info("Subscription updated", { userId, plan, expiresAt });
+    logger.info("Subscription updated", { userId, plan_id, expiresAt });
     return data;
   } catch (err) {
     logger.error("Upsert subscription failed", err);
