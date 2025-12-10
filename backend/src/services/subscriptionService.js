@@ -189,16 +189,19 @@
 
 // src/services/subscriptionService.js
 
+// src/services/subscriptionService.js
+
 import { supabase } from "./supabaseClient.js";
 import { initLogger } from "../utils/logger.js";
-import { now } from "../utils/helper.js"; 
+import { now } from "../utils/helper.js"; // ⬅️ This returns SECONDS
 // NOTE: Assuming TIERS is available. If you don't use it here, remove this line.
 // import { TIERS } from "../utils/tiers.js"; 
 
 const logger = initLogger();
 
-// One day in milliseconds: 1000 * 60 * 60 * 24
-const ONE_DAY_MS = 86400000;
+// Time constants in the units required by the calculation:
+const ONE_SECOND_MS = 1000;
+const ONE_DAY_SECONDS = 86400; // 60 * 60 * 24 seconds (Used with now())
 const DURATION_DAYS = 30; // Standard duration for new subscriptions
 
 /* -------------------------------------------------------
@@ -239,12 +242,11 @@ export const isActive = async (userId) => {
     }
 
     try {
-        // sub.expires_at is a TIMESTAMPTZ string. Date.parse converts it to epoch milliseconds.
-        const expirationTime = Date.parse(sub.expires_at); 
-        const currentTime = now(); // Consistent current time in milliseconds
+        // We use the robust Date comparison to avoid any ambiguity
+        const expirationDate = new Date(sub.expires_at); 
+        const currentDate = new Date(); 
 
-        // Perform numerical comparison after parsing the string to epoch milliseconds
-        const isSubscriptionActive = expirationTime > currentTime;
+        const isSubscriptionActive = expirationDate > currentDate;
 
         if (!isSubscriptionActive) {
              logger.info("Subscription is expired", { userId: userId, expiresAt: sub.expires_at });
@@ -305,9 +307,20 @@ export const upsertSubscription = async (userId, planId) => {
             return null;
         }
 
-        // Calculate future date in milliseconds, then convert to ISO string for the TIMESTAMPTZ column.
-        const futureMs = now() + (DURATION_DAYS * ONE_DAY_MS);
-        const expiresAtValue = new Date(futureMs).toISOString(); // ⬅️ Send ISO 8601 string
+        // 🛑 CRITICAL FIX: Calculation performed in SECONDS, then converted to MILLISECONDS for Date object
+        
+        // 1. Get current time in SECONDS
+        const currentTimeSeconds = now(); 
+        
+        // 2. Calculate duration in SECONDS and add to current time
+        const durationSeconds = DURATION_DAYS * ONE_DAY_SECONDS;
+        const futureSeconds = currentTimeSeconds + durationSeconds;
+        
+        // 3. Convert the final epoch time from SECONDS to MILLISECONDS for the Date constructor
+        const futureMs = futureSeconds * ONE_SECOND_MS;
+
+        // 4. Create the ISO string for the TIMESTAMPTZ column
+        const expiresAtValue = new Date(futureMs).toISOString(); 
 
         // -----------------------------------------
         // 1. Check if subscription already exists 
@@ -375,8 +388,6 @@ export const upsertSubscription = async (userId, planId) => {
         return null;
     }
 };
-
-
 
 
 
