@@ -2,7 +2,6 @@
 
 import { supabase } from "./supabaseClient.js";
 import { initLogger } from "../utils/logger.js";
-// NOTE: Assuming now() returns Date.now() (epoch milliseconds)
 import { now } from "../utils/helper.js"; 
 // NOTE: Ensure TIERS is available, either imported or defined globally
  import { TIERS } from "../utils/tiers.js"; 
@@ -38,15 +37,12 @@ export const getSubscription = async (userId) => {
     }
 };
 
----
-
 /* -------------------------------------------------------
     Check if subscription is active (Uses Date Strings)
 -------------------------------------------------------- */
 export const isActive = async (userId) => {
     const sub = await getSubscription(userId);
     
-    // Check for null or if expires_at is missing/null
     if (!sub || !sub.expires_at) { 
         logger.warn("Subscription or valid expires_at missing/null", { userId: userId });
         return false;
@@ -72,8 +68,6 @@ export const isActive = async (userId) => {
     }
 };
 
----
-
 /* -------------------------------------------------------
     Get plan limits 
     (Requires TIERS object to be available)
@@ -82,6 +76,7 @@ export const getPlanLimits = async (userId) => {
     try {
         const sub = await getSubscription(userId);
 
+        // NOTE: Replace TIERS.free with actual fallback if TIERS object isn't defined here
         if (!sub || !sub.plan_id) return TIERS.free; 
 
         // plan_id is UUID → convert to plan name
@@ -103,8 +98,6 @@ export const getPlanLimits = async (userId) => {
     }
 };
 
----
-
 /* -------------------------------------------------------
     UPSERT SUBSCRIPTION (Final: Inserts TIMESTAMPTZ String)
 -------------------------------------------------------- */
@@ -123,8 +116,7 @@ export const upsertSubscription = async (userId, planId) => {
             return null;
         }
 
-        // 🛑 CRITICAL FIX: Calculate future date in milliseconds, then convert to ISO string 
-        // for the TIMESTAMPTZ column.
+        // CRITICAL FIX: Calculate future date in milliseconds, then convert to ISO string 
         const futureMs = now() + (DURATION_DAYS * ONE_DAY_MS);
         const expiresAtValue = new Date(futureMs).toISOString(); // ⬅️ Send ISO 8601 string
 
