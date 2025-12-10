@@ -195,7 +195,7 @@ import { supabase } from "./supabaseClient.js";
 import { initLogger } from "../utils/logger.js";
 import { now } from "../utils/helper.js"; // ⬅️ This returns SECONDS
 // NOTE: Assuming TIERS is available. If you don't use it here, remove this line.
-// import { TIERS } from "../utils/tiers.js"; 
+ import { TIERS } from "../utils/tiers.js"; 
 
 const logger = initLogger();
 
