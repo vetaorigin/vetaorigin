@@ -47,21 +47,21 @@ export const getPlanLimits = async (userId) => {
 /**
  * Upsert subscription (after payment)
  */
-export const upsertSubscription = async (userId, plan, durationDays) => {
+export const upsertSubscription = async (userId, plan_id, durationDays) => {
   try {
     const expires_at = now() + durationDays * 24 * 3600;
 
     const { data, error } = await supabase
       .from("subscriptions")
       .upsert(
-        { user_id: userId, plan, expires_at },
+        { user_id: userId, plan_id, expires_at },
         { onConflict: ["user_id"] }
       )
       .select()
       .maybeSingle();
 
     if (error) throw error;
-    logger.info("Subscription upserted", { userId, plan, expires_at });
+    logger.info("Subscription upserted", { userId, plan_id, expires_at });
     return data;
   } catch (err) {
     logger.error("Upsert subscription failed", err);
