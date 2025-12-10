@@ -2,9 +2,10 @@
 
 import { supabase } from "./supabaseClient.js";
 import { initLogger } from "../utils/logger.js";
+// NOTE: Assuming now() returns Date.now() (epoch milliseconds)
 import { now } from "../utils/helper.js"; 
 // NOTE: Ensure TIERS is available, either imported or defined globally
-import { TIERS } from "../utils/tiers.js"; 
+ import { TIERS } from "../utils/tiers.js"; 
 
 const logger = initLogger();
 
@@ -17,28 +18,19 @@ const DURATION_DAYS = 30; // Standard duration for new subscriptions
 -------------------------------------------------------- */
 export const getSubscription = async (userId) => {
     try {
-       const { data, error } = await supabase
+        const { data, error } = await supabase
             .from("subscriptions")
-            // 🛑 USE EXTRACT(EPOCH FROM ...) TO FORCE NUMERICAL TIMESTAMP
-            .select(`
-                id, 
-                user_id, 
-                plan_id, 
-                created_at,
-                expires_at::text as expires_at
-            `) 
+            // Selecting columns as they are stored (TIMESTAMPTZ, UUID, etc.)
+            .select("id, user_id, plan_id, expires_at, created_at") 
             .eq("user_id", userId)
             .maybeSingle();
+
         if (error) {
              logger.error("SUBSCRIPTION FETCH QUERY FAILED", error);
              throw error;
         }
-               
+        
         return data; 
-        if (data && data.expires_at) {
-             data.expires_at = Number(data.expires_at);
-        }
-        return data;
 
     } catch (err) {
         logger.error("SUBSCRIPTION FETCH ERROR (Catch Block)", err);
@@ -46,38 +38,41 @@ export const getSubscription = async (userId) => {
     }
 };
 
+---
+
 /* -------------------------------------------------------
-    Check if subscription is active
-    (Compares two BIGINT timestamps: expires_at > now())
+    Check if subscription is active (Uses Date Strings)
 -------------------------------------------------------- */
 export const isActive = async (userId) => {
     const sub = await getSubscription(userId);
     
-    // Check for null or if expires_at is missing/zero
+    // Check for null or if expires_at is missing/null
     if (!sub || !sub.expires_at) { 
         logger.warn("Subscription or valid expires_at missing/null", { userId: userId });
         return false;
     }
 
     try {
-        let expirationTime = sub.expires_at;
-
-        // 🛑 DEFENSIVE CHECK: If the value is still a string (meaning the cache sent the old date),
-        // use Date.parse() to convert the date string back to epoch milliseconds.
-        if (typeof expirationTime === 'string') {
-            expirationTime = Date.parse(expirationTime);
-        }
-        
+        // expires_at is now a TIMESTAMPTZ string (e.g., "2025-12-10T...")
+        const expirationTime = Date.parse(sub.expires_at); 
         const currentTime = now(); // Consistent current time in milliseconds
 
-        // Perform numerical comparison
-        return expirationTime > currentTime;
+        // Perform numerical comparison after parsing the string to epoch milliseconds
+        const isSubscriptionActive = expirationTime > currentTime;
+
+        if (!isSubscriptionActive) {
+             logger.info("Subscription is expired", { userId: userId, expiresAt: sub.expires_at });
+        }
+        
+        return isSubscriptionActive;
 
     } catch (err) {
         logger.error("Error during isActive date comparison", err);
         return false;
     }
 };
+
+---
 
 /* -------------------------------------------------------
     Get plan limits 
@@ -108,8 +103,10 @@ export const getPlanLimits = async (userId) => {
     }
 };
 
+---
+
 /* -------------------------------------------------------
-    UPSERT SUBSCRIPTION (Fix: Excludes 'status' column)
+    UPSERT SUBSCRIPTION (Final: Inserts TIMESTAMPTZ String)
 -------------------------------------------------------- */
 export const upsertSubscription = async (userId, planId) => {
     try {
@@ -120,15 +117,16 @@ export const upsertSubscription = async (userId, planId) => {
             return null;
         }
 
-        // Validate UUID format
         const uuidRegex = /^[0-9a-fA-F-]{36}$/;
         if (!uuidRegex.test(planId)) {
             logger.error("Invalid planId → must be UUID");
             return null;
         }
 
-        // Calculate the raw numerical timestamp (milliseconds) for storage
-        const expiresAtTimestamp = now() + (DURATION_DAYS * ONE_DAY_MS); 
+        // 🛑 CRITICAL FIX: Calculate future date in milliseconds, then convert to ISO string 
+        // for the TIMESTAMPTZ column.
+        const futureMs = now() + (DURATION_DAYS * ONE_DAY_MS);
+        const expiresAtValue = new Date(futureMs).toISOString(); // ⬅️ Send ISO 8601 string
 
         // -----------------------------------------
         // 1. Check if subscription already exists 
@@ -148,14 +146,11 @@ export const upsertSubscription = async (userId, planId) => {
         // 2. UPDATE existing subscription
         // -----------------------------------------
         if (existing) {
-            // NOTE: We rely on the DB to auto-update 'created_at' if not provided
             const { data, error } = await supabase
                 .from("subscriptions")
                 .update({
                     plan_id: planId,
-                    expires_at: expiresAtTimestamp, // ⬅️ Storing BIGINT
-                    // updated_at will use DB default if not provided, or calculate locally
-                    // updated_at: new Date().toISOString() 
+                    expires_at: expiresAtValue, // ⬅️ Sending TIMESTAMPTZ string
                 })
                 .eq("user_id", userId)
                 .select()
@@ -179,9 +174,8 @@ export const upsertSubscription = async (userId, planId) => {
                 {
                     user_id: userId,
                     plan_id: planId,
-                    expires_at: expiresAtTimestamp, // ⬅️ Storing BIGINT (int8)
+                    expires_at: expiresAtValue, // ⬅️ Sending TIMESTAMPTZ string
                     created_at: new Date().toISOString()
-                    // 🛑 ONLY INSERTING COLUMNS THAT EXIST IN YOUR SCHEMA
                 }
             ])
             .select()
