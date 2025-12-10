@@ -53,25 +53,25 @@ export const getSubscription = async (userId) => {
 export const isActive = async (userId) => {
     const sub = await getSubscription(userId);
     
-    // Check for null or if expires_at is missing (which shouldn't happen)
-    if (!sub || typeof sub.expires_at !== 'number') { 
+    // Check for null or if expires_at is missing/zero
+    if (!sub || !sub.expires_at) { 
         logger.warn("Subscription or valid expires_at missing/null", { userId: userId });
         return false;
     }
 
     try {
-        // expires_at is the raw numerical timestamp (BIGINT/int8) from the DB.
-        const expirationTime = sub.expires_at; 
-        const currentTime = now(); // Consistent current time in milliseconds
+        let expirationTime = sub.expires_at;
 
-        // Perform numerical comparison directly
-        const isSubscriptionActive = expirationTime > currentTime;
-
-        if (!isSubscriptionActive) {
-             logger.info("Subscription is expired", { userId: userId, expiresAt: sub.expires_at });
+        // 🛑 DEFENSIVE CHECK: If the value is still a string (meaning the cache sent the old date),
+        // use Date.parse() to convert the date string back to epoch milliseconds.
+        if (typeof expirationTime === 'string') {
+            expirationTime = Date.parse(expirationTime);
         }
         
-        return isSubscriptionActive;
+        const currentTime = now(); // Consistent current time in milliseconds
+
+        // Perform numerical comparison
+        return expirationTime > currentTime;
 
     } catch (err) {
         logger.error("Error during isActive date comparison", err);
