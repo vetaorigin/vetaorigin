@@ -24,7 +24,7 @@ export const getSubscription = async (userId) => {
                 id, 
                 user_id, 
                 plan_id, 
-                created_at, 
+                created_at,
                 expires_at::text as expires_at
             `) 
             .eq("user_id", userId)
