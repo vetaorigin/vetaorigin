@@ -2,7 +2,7 @@
 
 import { supabase } from "./supabaseClient.js";
 import { initLogger } from "../utils/logger.js";
-import { now } from "../utils/helper.js"; // Import now() for consistent time calculation
+import { now } from "../utils/helper.js"; 
 // NOTE: Assuming TIERS is imported or globally available
 // import { TIERS } from "../utils/tiers.js"; 
 
@@ -19,7 +19,7 @@ export const getSubscription = async (userId) => {
     try {
         const { data, error } = await supabase
             .from("subscriptions")
-            // 🚨 FIX: Explicitly select minimal columns to avoid cached schema errors with select('*')
+            // Explicitly select columns. expires_at is now BIGINT.
             .select("id, user_id, plan_id, expires_at, status") 
             .eq("user_id", userId)
             .maybeSingle();
@@ -33,7 +33,6 @@ export const getSubscription = async (userId) => {
 
     } catch (err) {
         logger.error("SUBSCRIPTION FETCH ERROR (Catch Block)", err);
-        // Do NOT re-throw the error here, let the calling function handle the null return
         throw err;
     }
 };
@@ -44,22 +43,18 @@ export const getSubscription = async (userId) => {
 export const isActive = async (userId) => {
     const sub = await getSubscription(userId);
     
-    if (!sub || !sub.expires_at) {
-        logger.warn("Subscription or expires_at missing", { userId: userId });
+    // Check for null or if expires_at is 0 (which it shouldn't be for a new subscription)
+    if (!sub || !sub.expires_at) { 
+        logger.warn("Subscription or expires_at missing/null", { userId: userId });
         return false;
     }
 
     try {
-        // 🚨 FIX: Use numerical comparison (getTime) to bypass timezone/locale issues.
-        const expirationTime = new Date(sub.expires_at).getTime();
-        const currentTime = new Date().getTime();
+        // 🚨 FIX: expires_at is now the raw numerical timestamp (BIGINT) from the DB.
+        const expirationTime = sub.expires_at; 
+        const currentTime = now(); // Consistent current time in milliseconds
 
-        if (isNaN(expirationTime)) {
-             logger.error("Invalid expiration date format for comparison", { expires_at: sub.expires_at });
-             return false;
-        }
-
-        // Compare timestamps in milliseconds
+        // Perform numerical comparison directly
         const isSubscriptionActive = expirationTime > currentTime;
 
         if (!isSubscriptionActive) {
@@ -81,7 +76,6 @@ export const getPlanLimits = async (userId) => {
     try {
         const sub = await getSubscription(userId);
 
-        // This assumes TIERS is available in scope
         if (!sub || !sub.plan_id) return TIERS.free; 
 
         // plan_id is UUID → convert to plan name
@@ -122,9 +116,8 @@ export const upsertSubscription = async (userId, planId) => {
             return null;
         }
 
-        // Calculate expiration date based on consistent time and ensure ISO format
-        const expiresAtTimestamp = now() + (DURATION_DAYS * ONE_DAY_MS);
-        const expiresAtISO = new Date(expiresAtTimestamp).toISOString(); 
+        // 🚨 FIX: Calculate the raw numerical timestamp (milliseconds) for storage
+        const expiresAtTimestamp = now() + (DURATION_DAYS * ONE_DAY_MS); 
 
         // -----------------------------------------
         // 1. Check if subscription already exists 
@@ -148,7 +141,7 @@ export const upsertSubscription = async (userId, planId) => {
                 .from("subscriptions")
                 .update({
                     plan_id: planId,
-                    expires_at: expiresAtISO, 
+                    expires_at: expiresAtTimestamp, // ⬅️ Storing BIGINT
                     updated_at: new Date().toISOString()
                 })
                 .eq("user_id", userId)
@@ -169,12 +162,11 @@ export const upsertSubscription = async (userId, planId) => {
         // -----------------------------------------
         const { data, error } = await supabase
             .from("subscriptions")
-            // Note: This relies on the unique constraint on user_id and auto-gen PK on id
             .insert([
                 {
                     user_id: userId,
                     plan_id: planId,
-                    expires_at: expiresAtISO, 
+                    expires_at: expiresAtTimestamp, // ⬅️ Storing BIGINT
                     status: "active",
                     created_at: new Date().toISOString(),
                     updated_at: new Date().toISOString()
