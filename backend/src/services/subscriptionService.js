@@ -4,7 +4,7 @@ import { supabase } from "./supabaseClient.js";
 import { initLogger } from "../utils/logger.js";
 import { now } from "../utils/helper.js"; // ⬅️ NEW: Import now() for consistent time calculation
 // NOTE: You may also need to import TIERS if not globally available:
-// import { TIERS } from "../utils/tiers.js"; 
+ import { TIERS } from "../utils/tiers.js"; 
 
 
 const logger = initLogger();
