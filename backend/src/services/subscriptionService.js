@@ -3,14 +3,14 @@
 import { supabase } from "./supabaseClient.js";
 import { initLogger } from "../utils/logger.js";
 import { now } from "../utils/helper.js"; 
-// NOTE: Assuming TIERS is imported or globally available
-// import { TIERS } from "../utils/tiers.js"; 
+// NOTE: Ensure TIERS is available, either imported or defined globally
+import { TIERS } from "../utils/tiers.js"; 
 
 const logger = initLogger();
 
 // One day in milliseconds: 1000 * 60 * 60 * 24
 const ONE_DAY_MS = 86400000;
-const DURATION_DAYS = 30;
+const DURATION_DAYS = 30; // Standard duration for new subscriptions
 
 /* -------------------------------------------------------
     Fetch current subscription
@@ -19,8 +19,8 @@ export const getSubscription = async (userId) => {
     try {
         const { data, error } = await supabase
             .from("subscriptions")
-            // Explicitly select columns. expires_at is now BIGINT.
-            .select("id, user_id, plan_id, expires_at, status") 
+            // Explicitly select columns matching your DB schema (NO 'status' column)
+            .select("id, user_id, plan_id, expires_at, created_at") 
             .eq("user_id", userId)
             .maybeSingle();
 
@@ -39,18 +39,19 @@ export const getSubscription = async (userId) => {
 
 /* -------------------------------------------------------
     Check if subscription is active
+    (Compares two BIGINT timestamps: expires_at > now())
 -------------------------------------------------------- */
 export const isActive = async (userId) => {
     const sub = await getSubscription(userId);
     
-    // Check for null or if expires_at is 0 (which it shouldn't be for a new subscription)
-    if (!sub || !sub.expires_at) { 
-        logger.warn("Subscription or expires_at missing/null", { userId: userId });
+    // Check for null or if expires_at is missing (which shouldn't happen)
+    if (!sub || typeof sub.expires_at !== 'number') { 
+        logger.warn("Subscription or valid expires_at missing/null", { userId: userId });
         return false;
     }
 
     try {
-        // 🚨 FIX: expires_at is now the raw numerical timestamp (BIGINT) from the DB.
+        // expires_at is the raw numerical timestamp (BIGINT/int8) from the DB.
         const expirationTime = sub.expires_at; 
         const currentTime = now(); // Consistent current time in milliseconds
 
@@ -71,6 +72,7 @@ export const isActive = async (userId) => {
 
 /* -------------------------------------------------------
     Get plan limits 
+    (Requires TIERS object to be available)
 -------------------------------------------------------- */
 export const getPlanLimits = async (userId) => {
     try {
@@ -98,7 +100,7 @@ export const getPlanLimits = async (userId) => {
 };
 
 /* -------------------------------------------------------
-    UPSERT SUBSCRIPTION (no duplicate forever)
+    UPSERT SUBSCRIPTION (Fix: Excludes 'status' column)
 -------------------------------------------------------- */
 export const upsertSubscription = async (userId, planId) => {
     try {
@@ -116,7 +118,7 @@ export const upsertSubscription = async (userId, planId) => {
             return null;
         }
 
-        // 🚨 FIX: Calculate the raw numerical timestamp (milliseconds) for storage
+        // Calculate the raw numerical timestamp (milliseconds) for storage
         const expiresAtTimestamp = now() + (DURATION_DAYS * ONE_DAY_MS); 
 
         // -----------------------------------------
@@ -137,12 +139,14 @@ export const upsertSubscription = async (userId, planId) => {
         // 2. UPDATE existing subscription
         // -----------------------------------------
         if (existing) {
+            // NOTE: We rely on the DB to auto-update 'created_at' if not provided
             const { data, error } = await supabase
                 .from("subscriptions")
                 .update({
                     plan_id: planId,
                     expires_at: expiresAtTimestamp, // ⬅️ Storing BIGINT
-                    updated_at: new Date().toISOString()
+                    // updated_at will use DB default if not provided, or calculate locally
+                    // updated_at: new Date().toISOString() 
                 })
                 .eq("user_id", userId)
                 .select()
@@ -166,10 +170,9 @@ export const upsertSubscription = async (userId, planId) => {
                 {
                     user_id: userId,
                     plan_id: planId,
-                    expires_at: expiresAtTimestamp, // ⬅️ Storing BIGINT
-                    status: "active",
-                    created_at: new Date().toISOString(),
-                    updated_at: new Date().toISOString()
+                    expires_at: expiresAtTimestamp, // ⬅️ Storing BIGINT (int8)
+                    created_at: new Date().toISOString()
+                    // 🛑 ONLY INSERTING COLUMNS THAT EXIST IN YOUR SCHEMA
                 }
             ])
             .select()
