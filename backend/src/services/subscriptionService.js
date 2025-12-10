@@ -2,9 +2,9 @@
 
 import { supabase } from "./supabaseClient.js";
 import { initLogger } from "../utils/logger.js";
-import { now } from "../utils/helper.js"; // ⬅️ NEW: Import now() for consistent time calculation
+import { now } from "../utils/helper.js"; // Import now() for consistent time calculation
 // NOTE: Assuming TIERS is imported or globally available
- import { TIERS } from "../utils/tiers.js"; 
+// import { TIERS } from "../utils/tiers.js"; 
 
 const logger = initLogger();
 
@@ -19,16 +19,21 @@ export const getSubscription = async (userId) => {
     try {
         const { data, error } = await supabase
             .from("subscriptions")
-            // Fetching necessary columns explicitly for robustness
+            // 🚨 FIX: Explicitly select minimal columns to avoid cached schema errors with select('*')
             .select("id, user_id, plan_id, expires_at, status") 
             .eq("user_id", userId)
             .maybeSingle();
 
-        if (error) throw error;
-        return data;
+        if (error) {
+             logger.error("SUBSCRIPTION FETCH QUERY FAILED", error);
+             throw error;
+        }
+        
+        return data; 
 
     } catch (err) {
-        logger.error("SUBSCRIPTION FETCH ERROR", err);
+        logger.error("SUBSCRIPTION FETCH ERROR (Catch Block)", err);
+        // Do NOT re-throw the error here, let the calling function handle the null return
         throw err;
     }
 };
@@ -54,6 +59,7 @@ export const isActive = async (userId) => {
              return false;
         }
 
+        // Compare timestamps in milliseconds
         const isSubscriptionActive = expirationTime > currentTime;
 
         if (!isSubscriptionActive) {
@@ -163,6 +169,7 @@ export const upsertSubscription = async (userId, planId) => {
         // -----------------------------------------
         const { data, error } = await supabase
             .from("subscriptions")
+            // Note: This relies on the unique constraint on user_id and auto-gen PK on id
             .insert([
                 {
                     user_id: userId,
