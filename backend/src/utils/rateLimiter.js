@@ -47,22 +47,20 @@ export async function checkUsage(userId, mode) {
             throw new Error("Your subscription has expired");
         }
 
-        // 4. Get the limit (using default for now, can be updated later)
+        // 4. Get the limit (using default for free tier)
         const limit = FREE_LIMITS[mode];
 
         // 5. Fetch current usage (ROLLING 24-HOUR COUNT via RPC)
-        // This RPC calls the PostgreSQL function that filters records from the last 24 hours.
         const { data: usageData, error: usageError } = await supabase.rpc("get_daily_usage", {
             userid: userId,
             mode_name: mode,
-        }).single(); // Use .single() as the RPC returns one row { daily_count: N }
+        }).single(); 
 
         if (usageError) {
             logger.error("RPC get_daily_usage error", usageError);
             throw new Error("Unable to fetch usage count");
         }
 
-        // The RPC returns a single object like { daily_count: 5 }
         const used = usageData?.daily_count ?? 0;
         const nextUsage = used + ONE_REQUEST;
 
@@ -97,15 +95,14 @@ export async function addUsage(userId, mode) {
             throw new Error("Invalid mode");
         }
 
-        // 🚨 CRITICAL CHANGE: We INSERT a new record instead of calling an RPC to increment a counter.
-        // The `created_at` column (set by the DB) handles the timestamp.
+        // This inserts a new row; the created_at column handles the timestamp for the 24hr refresh.
         const { error } = await supabase
             .from("usage")
             .insert([
                 { 
                     user_id: userId, 
                     type: mode, 
-                    units: ONE_REQUEST // Assuming you added a 'units' column (INT) to the usage table
+                    units: ONE_REQUEST 
                 } 
             ]);
 
@@ -122,7 +119,3 @@ export async function addUsage(userId, mode) {
 }
 
 export default checkUsage;
-
-
-
-
