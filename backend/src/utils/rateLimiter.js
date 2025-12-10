@@ -51,7 +51,7 @@ export async function checkUsage(userId, mode) {
         const limit = FREE_LIMITS[mode];
 
         // 5. Fetch current usage (ROLLING 24-HOUR COUNT via RPC)
-        const { data: usageData, error: usageError } = await supabase.rpc("get_daily_usage_v2", {
+        const { data: usageData, error: usageError } = await supabase.rpc("get_daily_usage", {
             userid: userId,
             mode_name: mode,
         }).single(); 
