@@ -10,7 +10,7 @@ const logger = initLogger();
 // ----------------------------------------------------
 // THE FREE PLAN UUID — MUST EXIST IN "plans" TABLE
 // ----------------------------------------------------
-const FREE_PLAN_UUID = "af502176-bc2d-4930-8d2f-1b612cc1579a";
+const FREE_PLAN_UUID = "003df80b-d242-4182-aff9-0b571aab50c7";
 
 /* ----------------------------------------------------
     SIGNUP
