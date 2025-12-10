@@ -3,11 +3,14 @@
 import { supabase } from "./supabaseClient.js";
 import { initLogger } from "../utils/logger.js";
 import { now } from "../utils/helper.js"; // ⬅️ NEW: Import now() for consistent time calculation
-// NOTE: You may also need to import TIERS if not globally available:
+// NOTE: Assuming TIERS is imported or globally available
  import { TIERS } from "../utils/tiers.js"; 
 
-
 const logger = initLogger();
+
+// One day in milliseconds: 1000 * 60 * 60 * 24
+const ONE_DAY_MS = 86400000;
+const DURATION_DAYS = 30;
 
 /* -------------------------------------------------------
     Fetch current subscription
@@ -16,7 +19,7 @@ export const getSubscription = async (userId) => {
     try {
         const { data, error } = await supabase
             .from("subscriptions")
-            // ⚠️ Changed to select specific columns for robustness instead of '*'
+            // Fetching necessary columns explicitly for robustness
             .select("id, user_id, plan_id, expires_at, status") 
             .eq("user_id", userId)
             .maybeSingle();
@@ -35,8 +38,34 @@ export const getSubscription = async (userId) => {
 -------------------------------------------------------- */
 export const isActive = async (userId) => {
     const sub = await getSubscription(userId);
-    if (!sub || !sub.expires_at) return false;
-    return new Date(sub.expires_at) > new Date();
+    
+    if (!sub || !sub.expires_at) {
+        logger.warn("Subscription or expires_at missing", { userId: userId });
+        return false;
+    }
+
+    try {
+        // 🚨 FIX: Use numerical comparison (getTime) to bypass timezone/locale issues.
+        const expirationTime = new Date(sub.expires_at).getTime();
+        const currentTime = new Date().getTime();
+
+        if (isNaN(expirationTime)) {
+             logger.error("Invalid expiration date format for comparison", { expires_at: sub.expires_at });
+             return false;
+        }
+
+        const isSubscriptionActive = expirationTime > currentTime;
+
+        if (!isSubscriptionActive) {
+             logger.info("Subscription is expired", { userId: userId, expiresAt: sub.expires_at });
+        }
+        
+        return isSubscriptionActive;
+
+    } catch (err) {
+        logger.error("Error during isActive date comparison", err);
+        return false;
+    }
 };
 
 /* -------------------------------------------------------
@@ -46,7 +75,7 @@ export const getPlanLimits = async (userId) => {
     try {
         const sub = await getSubscription(userId);
 
-        // This assumes TIERS is globally available or imported
+        // This assumes TIERS is available in scope
         if (!sub || !sub.plan_id) return TIERS.free; 
 
         // plan_id is UUID → convert to plan name
@@ -71,10 +100,6 @@ export const getPlanLimits = async (userId) => {
 /* -------------------------------------------------------
     UPSERT SUBSCRIPTION (no duplicate forever)
 -------------------------------------------------------- */
-// One day in milliseconds: 1000 * 60 * 60 * 24
-const ONE_DAY_MS = 86400000;
-const DURATION_DAYS = 30;
-
 export const upsertSubscription = async (userId, planId) => {
     try {
         logger.info("UPSERT SUBSCRIPTION", { userId, planId });
@@ -91,13 +116,12 @@ export const upsertSubscription = async (userId, planId) => {
             return null;
         }
 
-        // 🚨 FIX: Calculate expiration date based on consistent time and ensure ISO format
-        // expiresAt is a timestamp (milliseconds since epoch)
+        // Calculate expiration date based on consistent time and ensure ISO format
         const expiresAtTimestamp = now() + (DURATION_DAYS * ONE_DAY_MS);
         const expiresAtISO = new Date(expiresAtTimestamp).toISOString(); 
 
         // -----------------------------------------
-        // 1. Check if subscription already exists (using minimal select)
+        // 1. Check if subscription already exists 
         // -----------------------------------------
         const { data: existing, error: fetchErr } = await supabase
             .from("subscriptions")
@@ -118,7 +142,7 @@ export const upsertSubscription = async (userId, planId) => {
                 .from("subscriptions")
                 .update({
                     plan_id: planId,
-                    expires_at: expiresAtISO, // ⬅️ Using the guaranteed ISO string
+                    expires_at: expiresAtISO, 
                     updated_at: new Date().toISOString()
                 })
                 .eq("user_id", userId)
@@ -143,7 +167,7 @@ export const upsertSubscription = async (userId, planId) => {
                 {
                     user_id: userId,
                     plan_id: planId,
-                    expires_at: expiresAtISO, // ⬅️ Using the guaranteed ISO string
+                    expires_at: expiresAtISO, 
                     status: "active",
                     created_at: new Date().toISOString(),
                     updated_at: new Date().toISOString()
