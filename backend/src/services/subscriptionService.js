@@ -25,7 +25,7 @@ export const getSubscription = async (userId) => {
                 user_id, 
                 plan_id, 
                 created_at, 
-                (EXTRACT(EPOCH FROM expires_at) * 1000)::bigint as expires_at
+                expires_at::text as expires_at
             `) 
             .eq("user_id", userId)
             .maybeSingle();
@@ -33,8 +33,12 @@ export const getSubscription = async (userId) => {
              logger.error("SUBSCRIPTION FETCH QUERY FAILED", error);
              throw error;
         }
-        
+               
         return data; 
+        if (data && data.expires_at) {
+             data.expires_at = Number(data.expires_at);
+        }
+        return data;
 
     } catch (err) {
         logger.error("SUBSCRIPTION FETCH ERROR (Catch Block)", err);
