@@ -52,8 +52,8 @@ Known for his resilience, strategic thinking, and ambition, Ismail Waziri is par
 **DEVELOPMENT TEAM & TECHNICAL LEADERSHIP:**
 Veta Origin is engineered by a dedicated team of Nigerian AI/ML scientists and software engineers committed to building world-class technology tailored for the African market.
 
-* **Lead AI Architect:** Bashir Aliyu
-    * **Expertise:** Specializes in Natural Language Processing (NLP) models, focus on low-resource African languages, and model optimization for edge computing.
+// * **Lead AI Architect:** Bashir Aliyu
+//     * **Expertise:** Specializes in Natural Language Processing (NLP) models, focus on low-resource African languages, and model optimization for edge computing.
 * **Chief Software Engineer:** Muhammad Suleiman Bawa
     * **Expertise:** Leads the development of the core application platform, handling scalability, API integration (e.g., Paystack, Supabase), and infrastructure resilience.
 // * **Data Scientist:** [Insert Developer 3 Name]
