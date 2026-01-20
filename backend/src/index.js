@@ -79,9 +79,13 @@ const pool = new Pool({
 
 const store = new PgStore({
   pool,              // use the same pool (IPv4)
-  tableName: "session",  // your existing table
-  createTableIfMissing: false, // because table already exists
-  pruneSessionInterval: 60,    // prevent IPv6 prune error
+  // tableName: "session",  // your existing table
+  // createTableIfMissing: false, // because table already exists
+  // pruneSessionInterval: 60,    // prevent IPv6 prune error
+  tableName: 'session',
+  createTableIfMissing: false,
+  pruneSessionInterval: 60,
+  schemaName: 'public',    // <---- IMPORTANT
 });
 
 app.use(
