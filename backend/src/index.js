@@ -103,8 +103,7 @@ app.use(
 //   })
 // );
 
-
-⬇️ DEV SESSION (LOCAL TESTING)
+// ⬇️ DEV SESSION (LOCAL TESTING)
 app.use(
   session({
     secret: process.env.SESSION_SECRET,
