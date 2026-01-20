@@ -172,9 +172,35 @@ app.use(
 
 // ⬇️ PRODUCTION POSTGRES SESSION STORE (READY TO USE)
 
+// const { Pool } = pkg;
+// const PgStore = pgSession(session);
+// const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+
+// app.use(
+//   session({
+//     store: new PgStore({ pool }),
+//     secret: process.env.SESSION_SECRET,
+//     resave: false,
+//     saveUninitialized: false,
+//     cookie: {
+//       httpOnly: true,
+//       secure: process.env.NODE_ENV === "production",
+//       sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+//       maxAge: 7 * 24 * 60 * 60 * 1000,
+//     },
+//   })
+// );
+
 const { Pool } = pkg;
 const PgStore = pgSession(session);
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: {
+    rejectUnauthorized: false,
+  },
+  family: 4, // <-- FIX ENETUNREACH (force IPv4)
+});
 
 app.use(
   session({
@@ -190,6 +216,21 @@ app.use(
     },
   })
 );
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 // ⬇️ DEV SESSION (LOCAL TESTING)
 // app.use(
