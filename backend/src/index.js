@@ -50,8 +50,8 @@ app.use(
 
 // ⬇️ PRODUCTION POSTGRES SESSION STORE (READY TO USE)
 
-// const { Pool } = pkg;
-// const PgStore = pgSession(session);
+const { Pool } = pkg;
+const PgStore = pgSession(session);
 // const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
 // app.use(
