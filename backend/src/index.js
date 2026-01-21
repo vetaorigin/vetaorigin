@@ -1,5 +1,5 @@
 import express from "express";
-import session from "express-session";
+// import session from "express-session";
 import dotenv from "dotenv";
 import path from "path";
 import cors from "cors";
@@ -88,20 +88,20 @@ const store = new PgStore({
   schemaName: 'public',    // <---- IMPORTANT
 });
 
-app.use(
-  session({
-    store,
-    secret: process.env.SESSION_SECRET,
-    resave: false,
-    saveUninitialized: false,
-    cookie: {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-    },
-  })
-);
+// app.use(
+//   session({
+//     store,
+//     secret: process.env.SESSION_SECRET,
+//     resave: false,
+//     saveUninitialized: false,
+//     cookie: {
+//       httpOnly: true,
+//       secure: process.env.NODE_ENV === "production",
+//       sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+//       maxAge: 7 * 24 * 60 * 60 * 1000,
+//     },
+//   })
+// );
 
 // ⬇️ DEV SESSION (LOCAL TESTING)
 // app.use(
