@@ -50,8 +50,8 @@ app.use(
 
 // ⬇️ PRODUCTION POSTGRES SESSION STORE (READY TO USE)
 
-// const { Pool } = pkg;
-// const PgStore = pgSession(session);
+const { Pool } = pkg;
+const PgStore = pgSession(session);
 // const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
 // app.use(
@@ -77,46 +77,46 @@ app.use(
 //   family: 4, // <---- forces IPv4 to fix ENETUNREACH
 // });
 
-// const store = new PgStore({
-//   pool,              // use the same pool (IPv4)
-//   // tableName: "session",  // your existing table
-//   // createTableIfMissing: false, // because table already exists
-//   // pruneSessionInterval: 60,    // prevent IPv6 prune error
-//   tableName: 'session',
-//   createTableIfMissing: false,
-//   pruneSessionInterval: 60,
-//   schemaName: 'public',    // <---- IMPORTANT
-// });
+const store = new PgStore({
+  pool,              // use the same pool (IPv4)
+  // tableName: "session",  // your existing table
+  // createTableIfMissing: false, // because table already exists
+  // pruneSessionInterval: 60,    // prevent IPv6 prune error
+  tableName: 'session',
+  createTableIfMissing: false,
+  pruneSessionInterval: 60,
+  schemaName: 'public',    // <---- IMPORTANT
+});
 
-// app.use(
-//   session({
-//     store,
-//     secret: process.env.SESSION_SECRET,
-//     resave: false,
-//     saveUninitialized: false,
-//     cookie: {
-//       httpOnly: true,
-//       secure: process.env.NODE_ENV === "production",
-//       sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
-//       maxAge: 7 * 24 * 60 * 60 * 1000,
-//     },
-//   })
-// );
-
-// ⬇️ DEV SESSION (LOCAL TESTING)
 app.use(
   session({
+    store,
     secret: process.env.SESSION_SECRET,
     resave: false,
     saveUninitialized: false,
     cookie: {
       httpOnly: true,
-      secure: false,     // must be false locally
-      sameSite: "lax",   // allow frontend on 5500
+      secure: process.env.NODE_ENV === "production",
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
       maxAge: 7 * 24 * 60 * 60 * 1000,
     },
   })
 );
+
+// ⬇️ DEV SESSION (LOCAL TESTING)
+// app.use(
+//   session({
+//     secret: process.env.SESSION_SECRET,
+//     resave: false,
+//     saveUninitialized: false,
+//     cookie: {
+//       httpOnly: true,
+//       secure: false,     // must be false locally
+//       sameSite: "lax",   // allow frontend on 5500
+//       maxAge: 7 * 24 * 60 * 60 * 1000,
+//     },
+//   })
+// );
 
 
 
