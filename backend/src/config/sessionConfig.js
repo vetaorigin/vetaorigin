@@ -1,5 +1,5 @@
 // config/sessionConfig.js
-import session from "express-session";
+// import session from "express-session";
 import pgSession from "connect-pg-simple";
 import pkg from "pg";
 import dotenv from "dotenv";
@@ -11,10 +11,10 @@ const logger = initLogger();
 const { Pool } = pkg;
 
 // Check environment variables
-if (!process.env.SESSION_SECRET) {
-  logger.error("Missing SESSION_SECRET in environment variables!");
-  throw new Error("SESSION_SECRET is required for sessions");
-}
+// if (!process.env.SESSION_SECRET) {
+//   logger.error("Missing SESSION_SECRET in environment variables!");
+//   throw new Error("SESSION_SECRET is required for sessions");
+// }
 
 // PostgreSQL connection pool
 let pool;
