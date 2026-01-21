@@ -69,13 +69,13 @@ const PgStore = pgSession(session);
 //   })
 // );
 
-// const pool = new Pool({
-//   connectionString: process.env.DATABASE_URL,
-//   ssl: {
-//     rejectUnauthorized: false,
-//   },
-//   family: 4, // <---- forces IPv4 to fix ENETUNREACH
-// });
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: {
+    rejectUnauthorized: false,
+  },
+  family: 4, // <---- forces IPv4 to fix ENETUNREACH
+});
 
 const store = new PgStore({
   pool,              // use the same pool (IPv4)
