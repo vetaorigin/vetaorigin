@@ -68,25 +68,342 @@ This team works directly under the direction and vision of the Founder/CEO, ensu
  * sendMessage
  * Body: { chatId?, message, model? }
  */
+// export const sendMessage = async (req, res) => {
+//     try {
+//         const userId = req.session?.userId;
+//         if (!userId) return res.status(401).json({ msg: "Unauthorized" });
+
+//         const { chatId, message, model = "gpt-4o" } = req.body;
+//         if (!message || typeof message !== "string" || !message.trim()) {
+//             return res.status(400).json({ msg: "Message required" });
+//         }
+
+//         // 0️⃣ Rate-limit check for text chat (1 unit per message)
+//         try {
+//             await checkUsage(userId, "chat", 1);
+//         } catch (err) {
+//             logger.warn("checkUsage blocked", { userId, err: err.message });
+//             return res.status(429).json({ msg: err.message || "Rate limit exceeded" });
+//         }
+
+//         // 1️⃣ Ensure chat exists (create if no chatId)
+//         let chat;
+//         if (chatId) {
+//             const { data: c, error: cErr } = await supabase
+//                 .from("chats")
+//                 .select("*")
+//                 .eq("id", chatId)
+//                 .maybeSingle();
+//             if (cErr) {
+//                 logger.error("Fetch chat error", cErr);
+//                 return res.status(500).json({ msg: "Could not fetch chat" });
+//             }
+//             if (!c) return res.status(404).json({ msg: "Chat not found" });
+//             if (c.user_id !== userId) return res.status(403).json({ msg: "Forbidden" });
+//             chat = c;
+//         } else {
+//             const { data: newChat, error: newChatErr } = await supabase
+//                 .from("chats")
+//                 .insert([{ user_id: userId, model }])
+//                 .select()
+//                 .maybeSingle();
+//             if (newChatErr) {
+//                 logger.error("Create chat error", newChatErr);
+//                 return res.status(500).json({ msg: "Could not create chat" });
+//             }
+//             chat = newChat;
+//         }
+
+//         // 2️⃣ Persist user message
+//         const { data: userMsg, error: userMsgErr } = await supabase
+//             .from("messages")
+//             .insert([
+//                 {
+//                     chat_id: chat.id,
+//                     user_role: "user",
+//                     content: message
+//                 }
+//             ])
+//             .select()
+//             .maybeSingle();
+
+//         if (userMsgErr) {
+//             logger.error("Insert user message error", userMsgErr);
+//             // not fatal — continue but warn
+//         }
+
+//         // 3️⃣ Build context: last N messages (including current) — order ascending
+//         const { data: history, error: historyErr } = await supabase
+//             .from("messages")
+//             .select("user_role, content")
+//             .eq("chat_id", chat.id)
+//             .order("created_at", { ascending: true })
+//             .limit(25); // Limit the history to save on tokens/cost
+
+//         if (historyErr) {
+//             logger.warn("Could not fetch history, continuing without context", historyErr);
+//         }
+
+//         // 🚨 START THE MESSAGES ARRAY WITH THE SYSTEM MESSAGE 🚨
+//         const messagesForOpenAI = [CHATBOT_PERSONA];
+
+//         // Map and append the conversation history
+//         (history || []).forEach((m) => {
+//             let role = m.user_role === "user" ? "user" : (m.user_role === "assistant" ? "assistant" : "system");
+            
+//             // The last message in the history is the current user message, which we handle next,
+//             // but for safety, we push all historical messages from the DB
+//             messagesForOpenAI.push({
+//                 role: role,
+//                 content: m.content
+//             });
+//         });
+
+//         // 4️⃣ Call OpenAI
+//         logger.info("Calling OpenAI", { userId, chatId: chat.id, model, messagesCount: messagesForOpenAI.length });
+//         let assistantText = "";
+//         try {
+//             // Use the openai client instance from config/openaiConfig.js
+//             const resp = await openai.chat.completions.create({
+//                 model,
+//                 messages: messagesForOpenAI, // Array now starts with System Message
+//                 max_tokens: 1000,
+//                 user: userId // Recommended best practice for monitoring abuse/usage
+//             });
+
+//             // defensive parsing
+//             assistantText = resp?.choices?.[0]?.message?.content?.trim() ?? "";
+            
+//             // Fallback for an unlikely empty response
+//             if (!assistantText) {
+//                  assistantText = "I received an empty response from the AI model.";
+//             }
+
+//         } catch (err) {
+//             logger.error("OpenAI API error", err);
+//             // Save error message to assistant content so user sees something
+//             assistantText = "Sorry — I couldn't generate a response right now due to an external service error.";
+//         }
+
+//         // 5️⃣ Save assistant message
+//         const { data: assistantMsg, error: assistantErr } = await supabase
+//             .from("messages")
+//             .insert([
+//                 {
+//                     chat_id: chat.id,
+//                     user_role: "assistant",
+//                     content: assistantText
+//                 }
+//             ])
+//             .select()
+//             .maybeSingle();
+
+//         if (assistantErr) {
+//             logger.error("Insert assistant message error", assistantErr);
+//         }
+
+//         // 6️⃣ Auto-name chat if missing (first non-empty message trimmed)
+//         if (!chat.title || chat.title.trim() === "") {
+//             const candidate = (message || assistantText || "").substring(0, 60).trim();
+//             if (candidate) {
+//                 const { error: titleErr } = await supabase
+//                     .from("chats")
+//                     .update({ title: candidate })
+//                     .eq("id", chat.id);
+//                 if (titleErr) logger.warn("Could not auto-title chat", titleErr);
+//             }
+//         }
+
+//         // 7️⃣ Increment usage (text)
+//         try {
+//             await addUsage(userId, "chat", 1);
+//         } catch (err) {
+//             // log but don't fail the response — user still gets reply
+//             logger.error("Failed to increment usage", err);
+//         }
+
+//         // 8️⃣ Return assistant reply + chat id
+//         res.json({
+//             chatId: chat.id,
+//             reply: assistantText,
+//             userMessage: userMsg ?? null,
+//             assistantMessage: assistantMsg ?? null
+//         });
+//     } catch (err) {
+//         logger.error("sendMessage error", err);
+//         res.status(500).json({ msg: "Chat error", error: err.message });
+//     }
+// };
+
+// /**
+//  * getChat - returns chat metadata + all messages
+//  */
+// export const getChat = async (req, res) => {
+//     try {
+//         const userId = req.session?.userId;
+//         if (!userId) return res.status(401).json({ msg: "Unauthorized" });
+
+//         const { chatId } = req.params;
+//         const { data: chat, error: chatErr } = await supabase
+//             .from("chats")
+//             .select("*")
+//             .eq("id", chatId)
+//             .maybeSingle();
+
+//         if (chatErr) {
+//             logger.error("Fetch chat error", chatErr);
+//             return res.status(500).json({ msg: "Could not fetch chat" });
+//         }
+//         if (!chat || chat.user_id !== userId) return res.status(404).json({ msg: "Not found" });
+
+//         const { data: messages, error: msgErr } = await supabase
+//             .from("messages")
+//             .select("id, user_role, content, created_at")
+//             .eq("chat_id", chatId)
+//             .order("created_at", { ascending: true });
+
+//         if (msgErr) logger.error("Get messages error", msgErr);
+
+//         res.json({ chat, messages: messages || [] });
+//     } catch (err) {
+//         logger.error("getChat error", err);
+//         res.status(500).json({ msg: "Server error", error: err.message });
+//     }
+// };
+
+// /**
+//  * listChats - paginated list of user's chats
+//  * Query params: ?page=1&limit=20
+//  */
+// export const listChats = async (req, res) => {
+//     try {
+//         const userId = req.session?.userId;
+//         if (!userId) return res.status(401).json({ msg: "Unauthorized" });
+
+//         const page = Math.max(1, parseInt(req.query.page || "1", 10));
+//         const limit = Math.min(100, Math.max(1, parseInt(req.query.limit || "20", 10)));
+//         const from = (page - 1) * limit;
+//         const to = from + limit - 1;
+
+//         const { data, error } = await supabase
+//             .from("chats")
+//             .select("id, title, created_at, updated_at")
+//             .eq("user_id", userId)
+//             .order("updated_at", { ascending: false })
+//             .range(from, to);
+
+//         if (error) {
+//             logger.error("listChats error", error);
+//             return res.status(500).json({ msg: "Could not list chats" });
+//         }
+
+//         res.json({ chats: data || [], page, limit });
+//     } catch (err) {
+//         logger.error("listChats error", err);
+//         res.status(500).json({ msg: "Server error", error: err.message });
+//     }
+// };
+
+// /**
+//  * renameChat
+//  */
+// export const renameChat = async (req, res) => {
+//     try {
+//         const userId = req.session?.userId;
+//         const { chatId } = req.params;
+//         const { title } = req.body;
+
+//         if (!userId) return res.status(401).json({ msg: "Unauthorized" });
+//         if (!title || !title.trim()) return res.status(400).json({ msg: "Title required" });
+
+//         // ensure owner
+//         const { data: chat, error: chatErr } = await supabase
+//             .from("chats")
+//             .select("user_id")
+//             .eq("id", chatId)
+//             .maybeSingle();
+
+//         if (chatErr) {
+//             logger.error("renameChat fetch error", chatErr);
+//             return res.status(500).json({ msg: "Could not rename chat" });
+//         }
+//         if (!chat || chat.user_id !== userId) return res.status(404).json({ msg: "Not found" });
+
+//         const { error } = await supabase.from("chats").update({ title }).eq("id", chatId);
+//         if (error) {
+//             logger.error("renameChat update error", error);
+//             return res.status(500).json({ msg: "Could not rename chat" });
+//         }
+
+//         res.json({ msg: "Renamed" });
+//     } catch (err) {
+//         logger.error("renameChat error", err);
+//         res.status(500).json({ msg: "Server error", error: err.message });
+//     }
+// };
+
+// /**
+//  * deleteChat
+//  */
+// export const deleteChat = async (req, res) => {
+//     try {
+//         const userId = req.session?.userId;
+//         const { chatId } = req.params;
+//         if (!userId) return res.status(401).json({ msg: "Unauthorized" });
+
+//         const { data: chat, error: chatErr } = await supabase
+//             .from("chats")
+//             .select("user_id")
+//             .eq("id", chatId)
+//             .maybeSingle();
+
+//         if (chatErr) {
+//             logger.error("deleteChat fetch error", chatErr);
+//             return res.status(500).json({ msg: "Could not delete chat" });
+//         }
+//         if (!chat || chat.user_id !== userId) return res.status(404).json({ msg: "Not found" });
+
+//         const { error } = await supabase.from("chats").delete().eq("id", chatId);
+//         if (error) {
+//             logger.error("deleteChat error", error);
+//             return res.status(500).json({ msg: "Could not delete chat" });
+//         }
+
+//         res.json({ msg: "Deleted" });
+//     } catch (err) {
+//         logger.error("deleteChat error", err);
+//         res.status(500).json({ msg: "Server error", error: err.message });
+//     }
+// };
+
+// export default {
+//     sendMessage,
+//     getChat,
+//     listChats,
+//     renameChat,
+//     deleteChat
+// };
+
 export const sendMessage = async (req, res) => {
     try {
-        const userId = req.session?.userId;
+        // 1. Authenticated User (From JWT Middleware)
+        const userId = req.user?.id; 
         if (!userId) return res.status(401).json({ msg: "Unauthorized" });
 
         const { chatId, message, model = "gpt-4o" } = req.body;
-        if (!message || typeof message !== "string" || !message.trim()) {
-            return res.status(400).json({ msg: "Message required" });
+        if (!message?.trim()) {
+            return res.status(400).json({ msg: "Message content is required" });
         }
 
-        // 0️⃣ Rate-limit check for text chat (1 unit per message)
+        // 2. Pre-flight Rate Limit Check
         try {
-            await checkUsage(userId, "chat", 1);
+            await checkUsage(userId, "chat");
         } catch (err) {
-            logger.warn("checkUsage blocked", { userId, err: err.message });
-            return res.status(429).json({ msg: err.message || "Rate limit exceeded" });
+            logger.warn("Usage limit hit", { userId, msg: err.message });
+            return res.status(429).json({ msg: err.message });
         }
 
-        // 1️⃣ Ensure chat exists (create if no chatId)
+        // 3. Ensure Chat exists or Create New
         let chat;
         if (chatId) {
             const { data: c, error: cErr } = await supabase
@@ -94,297 +411,181 @@ export const sendMessage = async (req, res) => {
                 .select("*")
                 .eq("id", chatId)
                 .maybeSingle();
-            if (cErr) {
-                logger.error("Fetch chat error", cErr);
-                return res.status(500).json({ msg: "Could not fetch chat" });
-            }
-            if (!c) return res.status(404).json({ msg: "Chat not found" });
+
+            if (cErr || !c) return res.status(404).json({ msg: "Chat not found" });
             if (c.user_id !== userId) return res.status(403).json({ msg: "Forbidden" });
             chat = c;
         } else {
-            const { data: newChat, error: newChatErr } = await supabase
+            const { data: newChat, error: nErr } = await supabase
                 .from("chats")
-                .insert([{ user_id: userId, model }])
+                .insert([{ user_id: userId, model, title: message.substring(0, 50) }])
                 .select()
                 .maybeSingle();
-            if (newChatErr) {
-                logger.error("Create chat error", newChatErr);
-                return res.status(500).json({ msg: "Could not create chat" });
-            }
+            
+            if (nErr) throw new Error("Failed to initialize chat thread");
             chat = newChat;
         }
 
-        // 2️⃣ Persist user message
-        const { data: userMsg, error: userMsgErr } = await supabase
+        // 4. Persist User Message
+        const { data: userMsg, error: uMsgErr } = await supabase
             .from("messages")
-            .insert([
-                {
-                    chat_id: chat.id,
-                    user_role: "user",
-                    content: message
-                }
-            ])
+            .insert([{ chat_id: chat.id, user_role: "user", content: message }])
             .select()
             .maybeSingle();
 
-        if (userMsgErr) {
-            logger.error("Insert user message error", userMsgErr);
-            // not fatal — continue but warn
-        }
-
-        // 3️⃣ Build context: last N messages (including current) — order ascending
-        const { data: history, error: historyErr } = await supabase
+        // 5. Gather History for Context
+        const { data: history } = await supabase
             .from("messages")
             .select("user_role, content")
             .eq("chat_id", chat.id)
             .order("created_at", { ascending: true })
-            .limit(25); // Limit the history to save on tokens/cost
+            .limit(20);
 
-        if (historyErr) {
-            logger.warn("Could not fetch history, continuing without context", historyErr);
-        }
-
-        // 🚨 START THE MESSAGES ARRAY WITH THE SYSTEM MESSAGE 🚨
-        const messagesForOpenAI = [CHATBOT_PERSONA];
-
-        // Map and append the conversation history
-        (history || []).forEach((m) => {
-            let role = m.user_role === "user" ? "user" : (m.user_role === "assistant" ? "assistant" : "system");
-            
-            // The last message in the history is the current user message, which we handle next,
-            // but for safety, we push all historical messages from the DB
-            messagesForOpenAI.push({
-                role: role,
+        const messagesForAI = [
+            CHATBOT_PERSONA,
+            ...(history || []).map(m => ({
+                role: m.user_role === "user" ? "user" : "assistant",
                 content: m.content
-            });
-        });
+            }))
+        ];
 
-        // 4️⃣ Call OpenAI
-        logger.info("Calling OpenAI", { userId, chatId: chat.id, model, messagesCount: messagesForOpenAI.length });
+        // 6. Request Completion from OpenAI
         let assistantText = "";
         try {
-            // Use the openai client instance from config/openaiConfig.js
-            const resp = await openai.chat.completions.create({
+            const completion = await openai.chat.completions.create({
                 model,
-                messages: messagesForOpenAI, // Array now starts with System Message
+                messages: messagesForAI,
                 max_tokens: 1000,
-                user: userId // Recommended best practice for monitoring abuse/usage
+                user: userId // For OpenAI-side abuse monitoring
             });
-
-            // defensive parsing
-            assistantText = resp?.choices?.[0]?.message?.content?.trim() ?? "";
-            
-            // Fallback for an unlikely empty response
-            if (!assistantText) {
-                 assistantText = "I received an empty response from the AI model.";
-            }
-
+            assistantText = completion.choices[0].message.content || "I couldn't generate a response.";
         } catch (err) {
-            logger.error("OpenAI API error", err);
-            // Save error message to assistant content so user sees something
-            assistantText = "Sorry — I couldn't generate a response right now due to an external service error.";
+            logger.error("OpenAI API Failure", err);
+            assistantText = "Service temporary unavailable. Please try again later.";
         }
 
-        // 5️⃣ Save assistant message
-        const { data: assistantMsg, error: assistantErr } = await supabase
+        // 7. Save Assistant Message
+        const { data: assistantMsg } = await supabase
             .from("messages")
-            .insert([
-                {
-                    chat_id: chat.id,
-                    user_role: "assistant",
-                    content: assistantText
-                }
-            ])
+            .insert([{ chat_id: chat.id, user_role: "assistant", content: assistantText }])
             .select()
             .maybeSingle();
 
-        if (assistantErr) {
-            logger.error("Insert assistant message error", assistantErr);
-        }
-
-        // 6️⃣ Auto-name chat if missing (first non-empty message trimmed)
-        if (!chat.title || chat.title.trim() === "") {
-            const candidate = (message || assistantText || "").substring(0, 60).trim();
-            if (candidate) {
-                const { error: titleErr } = await supabase
-                    .from("chats")
-                    .update({ title: candidate })
-                    .eq("id", chat.id);
-                if (titleErr) logger.warn("Could not auto-title chat", titleErr);
-            }
-        }
-
-        // 7️⃣ Increment usage (text)
+        // 8. Record Usage (Increment count in DB)
         try {
-            await addUsage(userId, "chat", 1);
-        } catch (err) {
-            // log but don't fail the response — user still gets reply
-            logger.error("Failed to increment usage", err);
+            await addUsage(userId, "chat");
+        } catch (usageErr) {
+            logger.error("Usage recording failed", usageErr);
         }
 
-        // 8️⃣ Return assistant reply + chat id
+        // 9. Response
         res.json({
             chatId: chat.id,
             reply: assistantText,
-            userMessage: userMsg ?? null,
-            assistantMessage: assistantMsg ?? null
+            messages: {
+                user: userMsg,
+                assistant: assistantMsg
+            }
         });
+
     } catch (err) {
-        logger.error("sendMessage error", err);
-        res.status(500).json({ msg: "Chat error", error: err.message });
+        logger.error("sendMessage critical error", err);
+        res.status(500).json({ msg: "Internal Server Error" });
     }
 };
 
 /**
- * getChat - returns chat metadata + all messages
+ * getChat - Returns chat history
  */
 export const getChat = async (req, res) => {
     try {
-        const userId = req.session?.userId;
-        if (!userId) return res.status(401).json({ msg: "Unauthorized" });
-
+        const userId = req.user.id;
         const { chatId } = req.params;
-        const { data: chat, error: chatErr } = await supabase
+
+        const { data: chat, error } = await supabase
             .from("chats")
-            .select("*")
+            .select("*, messages(*)")
             .eq("id", chatId)
+            .eq("user_id", userId)
+            .order("created_at", { foreignTable: "messages", ascending: true })
             .maybeSingle();
 
-        if (chatErr) {
-            logger.error("Fetch chat error", chatErr);
-            return res.status(500).json({ msg: "Could not fetch chat" });
-        }
-        if (!chat || chat.user_id !== userId) return res.status(404).json({ msg: "Not found" });
+        if (error || !chat) return res.status(404).json({ msg: "Chat not found" });
 
-        const { data: messages, error: msgErr } = await supabase
-            .from("messages")
-            .select("id, user_role, content, created_at")
-            .eq("chat_id", chatId)
-            .order("created_at", { ascending: true });
-
-        if (msgErr) logger.error("Get messages error", msgErr);
-
-        res.json({ chat, messages: messages || [] });
+        res.json(chat);
     } catch (err) {
-        logger.error("getChat error", err);
-        res.status(500).json({ msg: "Server error", error: err.message });
+        res.status(500).json({ msg: "Server error" });
     }
 };
 
 /**
- * listChats - paginated list of user's chats
- * Query params: ?page=1&limit=20
+ * listChats - Paginated list of recent threads
  */
 export const listChats = async (req, res) => {
     try {
-        const userId = req.session?.userId;
-        if (!userId) return res.status(401).json({ msg: "Unauthorized" });
-
-        const page = Math.max(1, parseInt(req.query.page || "1", 10));
-        const limit = Math.min(100, Math.max(1, parseInt(req.query.limit || "20", 10)));
+        const userId = req.user.id;
+        const page = parseInt(req.query.page) || 1;
+        const limit = 20;
         const from = (page - 1) * limit;
-        const to = from + limit - 1;
 
         const { data, error } = await supabase
             .from("chats")
-            .select("id, title, created_at, updated_at")
+            .select("id, title, created_at")
             .eq("user_id", userId)
             .order("updated_at", { ascending: false })
-            .range(from, to);
+            .range(from, from + limit - 1);
 
-        if (error) {
-            logger.error("listChats error", error);
-            return res.status(500).json({ msg: "Could not list chats" });
-        }
-
-        res.json({ chats: data || [], page, limit });
+        if (error) throw error;
+        res.json({ chats: data, page });
     } catch (err) {
-        logger.error("listChats error", err);
-        res.status(500).json({ msg: "Server error", error: err.message });
+        res.status(500).json({ msg: "Could not fetch chats" });
     }
 };
 
 /**
- * renameChat
+ * renameChat - Manual title override
  */
 export const renameChat = async (req, res) => {
     try {
-        const userId = req.session?.userId;
+        const userId = req.user.id;
         const { chatId } = req.params;
         const { title } = req.body;
 
-        if (!userId) return res.status(401).json({ msg: "Unauthorized" });
-        if (!title || !title.trim()) return res.status(400).json({ msg: "Title required" });
-
-        // ensure owner
-        const { data: chat, error: chatErr } = await supabase
+        const { error } = await supabase
             .from("chats")
-            .select("user_id")
+            .update({ title })
             .eq("id", chatId)
-            .maybeSingle();
+            .eq("user_id", userId);
 
-        if (chatErr) {
-            logger.error("renameChat fetch error", chatErr);
-            return res.status(500).json({ msg: "Could not rename chat" });
-        }
-        if (!chat || chat.user_id !== userId) return res.status(404).json({ msg: "Not found" });
-
-        const { error } = await supabase.from("chats").update({ title }).eq("id", chatId);
-        if (error) {
-            logger.error("renameChat update error", error);
-            return res.status(500).json({ msg: "Could not rename chat" });
-        }
-
-        res.json({ msg: "Renamed" });
+        if (error) return res.status(400).json({ msg: "Update failed" });
+        res.json({ msg: "Success" });
     } catch (err) {
-        logger.error("renameChat error", err);
-        res.status(500).json({ msg: "Server error", error: err.message });
+        res.status(500).json({ msg: "Server error" });
     }
 };
 
 /**
- * deleteChat
+ * deleteChat - Soft or hard delete
  */
 export const deleteChat = async (req, res) => {
     try {
-        const userId = req.session?.userId;
+        const userId = req.user.id;
         const { chatId } = req.params;
-        if (!userId) return res.status(401).json({ msg: "Unauthorized" });
 
-        const { data: chat, error: chatErr } = await supabase
+        const { error } = await supabase
             .from("chats")
-            .select("user_id")
+            .delete()
             .eq("id", chatId)
-            .maybeSingle();
+            .eq("user_id", userId);
 
-        if (chatErr) {
-            logger.error("deleteChat fetch error", chatErr);
-            return res.status(500).json({ msg: "Could not delete chat" });
-        }
-        if (!chat || chat.user_id !== userId) return res.status(404).json({ msg: "Not found" });
-
-        const { error } = await supabase.from("chats").delete().eq("id", chatId);
-        if (error) {
-            logger.error("deleteChat error", error);
-            return res.status(500).json({ msg: "Could not delete chat" });
-        }
-
+        if (error) return res.status(400).json({ msg: "Delete failed" });
         res.json({ msg: "Deleted" });
     } catch (err) {
-        logger.error("deleteChat error", err);
-        res.status(500).json({ msg: "Server error", error: err.message });
+        res.status(500).json({ msg: "Server error" });
     }
 };
 
-export default {
-    sendMessage,
-    getChat,
-    listChats,
-    renameChat,
-    deleteChat
-};
-
-
+export default { sendMessage, getChat, listChats, renameChat, deleteChat };
 
 
 
