@@ -4,7 +4,6 @@
 // import { supabase } from "../services/supabaseClient.js";
 
 // const logger = initLogger();
-
 // const VALID_MODES = ["tts", "stt", "s2s", "chat"];
 // const ONE_REQUEST = 1;
 
