@@ -12,38 +12,41 @@ const FREE_PLAN_UUID = "1ef2f7f9-e383-449f-ad4c-965a74789043";
 export const signup = async (req, res) => {
     try {
         const { username, email, password } = req.body;
-        if (!username || !email || !password)
-            return res.status(400).json({ msg: "Missing fields" });
+        if (!username || !email || !password) return res.status(400).json({ msg: "Missing fields" });
 
-        // 1. Create User in your 'public.users' table
+        // 1. Create User in Supabase Auth (The "Security" table)
+        const { data: authData, error: authErr } = await supabase.auth.signUp({
+            email,
+            password,
+            options: { data: { username } }
+        });
+
+        if (authErr) return res.status(400).json({ msg: authErr.message });
+
+        const userId = authData.user.id;
+
+        // 2. Create User in your 'public.users' table (The "Profile" table)
+        // Note: We still hash for your custom table, but Supabase Auth handles its own security
         const hashedPassword = await bcrypt.hash(password, 12);
         const { data: newUser, error: createErr } = await supabase
             .from("users")
-            .insert([{ username, email, password: hashedPassword }])
+            .insert([{ id: userId, username, email, password: hashedPassword }])
             .select("id, username, email")
             .single();
 
         if (createErr) {
-            if (createErr.code === '23505') return res.status(409).json({ msg: "Email already exists" });
             logger.error("INSERT USER ERROR", createErr);
-            return res.status(500).json({ msg: "Error creating user" });
+            return res.status(500).json({ msg: "Error creating profile" });
         }
 
-        // 2. Initialize Default Subscription
-        const subscriptionData = await upsertSubscription(newUser.id, FREE_PLAN_UUID);
+        // 3. Initialize Default Subscription
+        await upsertSubscription(userId, FREE_PLAN_UUID);
 
-        if (!subscriptionData) { 
-            logger.error("SUBSCRIPTION INIT FAILED", { userId: newUser.id });
-            return res.status(500).json({ msg: "Error initializing plan" }); 
-        }
-
-        // ✅ NO SESSION STORAGE HERE. 
-        // Flutter will perform a separate 'signIn' to get the JWT.
         return res.json({ msg: "Account created successfully", user: newUser });
 
     } catch (err) {
         logger.error("SIGNUP FAILED", err);
-        return res.status(500).json({ msg: "Server error", error: err.message });
+        return res.status(500).json({ msg: "Server error" });
     }
 };
 
@@ -53,28 +56,34 @@ export const signup = async (req, res) => {
 export const login = async (req, res) => {
     try {
         const { email, password } = req.body;
-        if (!email || !password)
-            return res.status(400).json({ msg: "Missing fields" });
+        if (!email || !password) return res.status(400).json({ msg: "Missing fields" });
 
-        const { data: user, error } = await supabase
+        // 1. Sign in via Supabase Auth to get a REAL JWT token
+        const { data, error } = await supabase.auth.signInWithPassword({
+            email,
+            password,
+        });
+
+        if (error) return res.status(401).json({ msg: "Invalid credentials" });
+
+        // 2. Fetch the extra data (username) from your custom table
+        const { data: profile } = await supabase
             .from("users")
-            .select("*")
+            .select("username")
             .eq("email", email)
             .maybeSingle();
 
-        if (error || !user) return res.status(401).json({ msg: "Invalid credentials" });
+        logger.info("User verified via Supabase Auth", { userId: data.user.id });
 
-        const isValid = await bcrypt.compare(password, user.password);
-        if (!isValid) return res.status(401).json({ msg: "Invalid credentials" });
-
-        // ✅ REMOVED req.session.regenerate
-        logger.info("User verified on backend", { userId: user.id });
-
+        // 3. RETURN THE TOKEN TO POSTMAN/FLUTTER
         return res.json({
             msg: "Logged in",
-            user: { id: user.id, username: user.username, email: user.email }
-            // Note: In production, Flutter should sign in via Supabase Auth 
-            // to get a JWT, but this allows your custom table check to pass.
+            token: data.session.access_token, // <--- THIS IS WHAT YOU NEED
+            user: { 
+                id: data.user.id, 
+                username: profile?.username || "user", 
+                email: data.user.email 
+            }
         });
 
     } catch (err) {
@@ -82,7 +91,6 @@ export const login = async (req, res) => {
         return res.status(500).json({ msg: "Server error" });
     }
 };
-
 /* ----------------------------------------------------
     LOGOUT
 ----------------------------------------------------- */
