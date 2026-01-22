@@ -33,6 +33,10 @@ export const requireAuth = async (req, res, next) => {
   try {
     // 1. Extract the token from the Authorization header
     const authHeader = req.headers.authorization;
+    console.log("--- DEBUG START ---");
+    console.log("Full Header:", authHeader);
+    console.log("Extracted Token:", token);
+    console.log("--- DEBUG END ---");
 
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
       logger.warn("Unauthorized: No Bearer token provided");
