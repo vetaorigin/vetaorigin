@@ -214,13 +214,7 @@ const VALID_MODES = ["tts", "stt", "s2s", "chat"];
  */
 export async function checkUsage(userId, mode) {
     try {
-        logger.debug("Checking usage...", { userId, mode });
-
-        if (!VALID_MODES.includes(mode)) {
-            throw new Error("Invalid mode");
-        }
-
-        // 1. Fetch Subscription JOINED with Plans table to get dynamic limits
+        // 1. Fetch Subscription + Plan limits
         const { data: sub, error: subError } = await supabase
             .from("subscriptions")
             .select(`
@@ -236,46 +230,39 @@ export async function checkUsage(userId, mode) {
             .eq("user_id", userId)
             .maybeSingle();
 
-        if (subError) {
-            logger.error("Database fetch error", subError);
-            throw new Error("Unable to verify subscription data");
-        }
+        if (subError) throw new Error("Subscription fetch failed");
 
         // 2. Handle Expiration
-        if (sub && sub.expires_at && new Date(sub.expires_at) < new Date()) {
+        if (sub?.expires_at && new Date(sub.expires_at) < new Date()) {
             throw new Error("Your subscription has expired");
         }
 
-        // 3. Extract limits from the joined plan data (or default to a hardcoded "Guest" limit)
-        const userPlan = sub?.plans;
-        
-        // Map the database column names to your modes
-        const limitMap = {
-            chat: userPlan?.chat_limit ?? 5, // Defaulting to 5 if no plan found
-            tts: userPlan?.tts_limit ?? 5,
-            stt: userPlan?.stt_limit ?? 5,
-            s2s: userPlan?.s2s_limit ?? 5
+        // 3. Map limits based on your 'plans' table columns
+        const plan = sub?.plans;
+        const limits = {
+            chat: plan?.chat_limit ?? 5,
+            tts: plan?.tts_limit ?? 5,
+            stt: plan?.stt_limit ?? 5,
+            s2s: plan?.s2s_limit ?? 5
         };
 
-        const limit = limitMap[mode];
+        const limit = limits[mode];
 
-        // 4. Fetch current rolling 24-hour usage via RPC
+        // 4. Call the CLEANED RPC
         const { data: usageData, error: usageError } = await supabase.rpc("get_daily_usage", {
             userid: userId,
             mode_name: mode,
         });
 
         if (usageError) {
-            logger.error("RPC Error", usageError);
+            console.error("RPC Error Details:", usageError);
             throw new Error("Unable to fetch usage count");
         }
 
         const used = usageData?.[0]?.daily_count ?? 0;
 
-        // 5. Limit check
         if ((used + 1) > limit) {
-            logger.warn("Limit reached", { userId, mode, used, limit });
-            throw new Error(`Daily ${mode} limit of ${limit} reached for your ${userPlan?.name || 'free'} plan.`);
+            throw new Error(`Daily ${mode} limit reached (${limit}) for your ${plan?.name || 'free'} plan.`);
         }
 
         return true;
