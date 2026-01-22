@@ -124,84 +124,6 @@
 
 
 
-
-
-
-
-
-
-
-
-// import { now } from "./helper.js";
-// import { initLogger } from "./logger.js";
-// import { supabase } from "../services/supabaseClient.js";
-
-// const logger = initLogger();
-// const VALID_MODES = ["tts", "stt", "s2s", "chat"];
-
-// const PLAN_LIMITS = {
-//     free: { tts: 10, stt: 10, s2s: 10, chat: 10 },
-//     pro: { tts: 500, stt: 500, s2s: 500, chat: 500 }
-// };
-
-// export async function checkUsage(userId, mode) {
-//     try {
-//         // 1. Determine the user's plan
-//         const { data: sub } = await supabase
-//             .from("subscriptions")
-//             .select("plan_id")
-//             .eq("user_id", userId)
-//             .maybeSingle();
-
-//         const plan = sub?.plan_id || 'free'; 
-//         const limit = PLAN_LIMITS[plan][mode];
-
-//         // 2. Call your new SQL function
-//         const { data: usageData, error: usageError } = await supabase
-//             .rpc("get_daily_usage", { 
-//                 userid: userId, 
-//                 mode_name: mode 
-//             });
-
-//         if (usageError) {
-//             logger.error("RPC Error:", usageError);
-//             throw new Error("Usage check failed");
-//         }
-
-//         // The RPC returns an array; get daily_count from the first object
-//         const currentUsage = usageData[0]?.daily_count || 0;
-
-//         if (currentUsage >= limit) {
-//             throw new Error(`Daily ${mode} limit reached for your ${plan} plan.`);
-//         }
-
-//         return true;
-//     } catch (err) {
-//         logger.error("checkUsage error", err);
-//         throw err;
-//     }
-// }
-
-// export async function addUsage(userId, mode) {
-//     try {
-//         // Call the incrementer to add a new timestamped row
-//         const { error } = await supabase.rpc('increment_usage', { 
-//             uid: userId, 
-//             modename: mode 
-//         });
-
-//         if (error) throw error;
-//         logger.info(`Usage recorded for ${userId} [${mode}]`);
-//     } catch (err) {
-//         logger.error("addUsage error", err);
-//     }
-// }
-
-// export default checkUsage;
-
-
-
-
 import { now } from "./helper.js";
 import { initLogger } from "./logger.js";
 import { supabase } from "../services/supabaseClient.js";
@@ -215,36 +137,42 @@ const VALID_MODES = ["tts", "stt", "s2s", "chat"];
 export async function checkUsage(userId, mode) {
     try {
         // 1. Fetch Subscription + Plan limits
-        const { data: sub, error: subError } = await supabase
-            .from("subscriptions")
-            .select(`
-                expires_at,
-                plans (
-                    name,
-                    chat_limit,
-                    tts_limit,
-                    stt_limit,
-                    s2s_limit
-                )
-            `)
-            .eq("user_id", userId)
-            .maybeSingle();
+      // 1. Fetch Subscription + Plan limits
+const { data: sub, error: subError } = await supabase
+    .from("subscriptions")
+    .select(`
+        expires_at,
+        plans!fk_plan ( 
+            name,
+            chat_limit,
+            tts_limit,
+            stt_limit,
+            s2s_limit
+        )
+    `)
+    .eq("user_id", userId)
+    .maybeSingle();
 
-        if (subError) throw new Error("Subscription fetch failed");
+if (subError) {
+    // Log the specific database error to see exactly why it's failing
+    logger.error("DB Fetch Details:", subError); 
+    throw new Error("Subscription fetch failed");
+}
 
-        // 2. Handle Expiration
-        if (sub?.expires_at && new Date(sub.expires_at) < new Date()) {
-            throw new Error("Your subscription has expired");
-        }
+// 2. Extract the plan data carefully
+// Note: Even with !fk_plan, Supabase usually returns the key as 'plans'
+const plan = sub?.plans; 
 
-        // 3. Map limits based on your 'plans' table columns
-        const plan = sub?.plans;
-        const limits = {
-            chat: plan?.chat_limit ?? 5,
-            tts: plan?.tts_limit ?? 5,
-            stt: plan?.stt_limit ?? 5,
-            s2s: plan?.s2s_limit ?? 5
-        };
+if (!plan) {
+    logger.warn("No plan found for user, using default limits", { userId });
+}
+
+const limits = {
+    chat: plan?.chat_limit ?? 10, // Your fallback defaults
+    tts: plan?.tts_limit ?? 10,
+    stt: plan?.stt_limit ?? 10,
+    s2s: plan?.s2s_limit ?? 10
+};
 
         const limit = limits[mode];
 
