@@ -102,7 +102,7 @@ export async function addUsage(userId, mode) {
                 { 
                     user_id: userId, 
                     type: mode, 
-                    units: ONE_REQUEST 
+                    used: ONE_REQUEST 
                 } 
             ]);
 
