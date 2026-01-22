@@ -1,25 +1,103 @@
-// controllers/subscriptionController.js
+// // controllers/subscriptionController.js
+// import { supabase } from "../services/supabaseClient.js";
+// import { initLogger } from "../utils/logger.js";
+// import { TIERS } from "../utils/tiers.js";
+// import { now } from "../utils/helper.js";
+
+// const logger = initLogger();
+
+
+
+// export const getSubscription = async (req, res) => {
+//   try {
+//     const userId = req.session.userId;
+
+//     const { data, error } = await supabase
+//       .from("subscriptions")
+//       .select(`
+//         id,
+//         plan_id,
+//         expires_at,
+//         plans (
+//             name,
+//             tts_limit,
+//             stt_limit,
+//             s2s_limit
+//         )
+//       `)
+//       .eq("user_id", userId)
+//       .maybeSingle();
+
+//     if (error) {
+//       console.error("SUBSCRIPTION FETCH ERROR:", error);
+//       return res.status(500).json({ msg: "Failed to load subscription" });
+//     }
+
+//     if (!data) return res.status(404).json({ msg: "No subscription found" });
+
+//     res.json({ subscription: data });
+//   } catch (err) {
+//     console.error("GET SUB ERROR:", err);
+//     res.status(500).json({ msg: "Server error" });
+//   }
+// };
+
+
+// // Renew or create subscription (after payment)
+// export const upsertSubscription = async (userId, plan_id, durationDays) => {
+//   try {
+//     const expiresAt = now() + durationDays * 24 * 3600;
+
+//     const { data, error } = await supabase
+//       .from("subscriptions")
+//       .upsert(
+//         { user_id: userId, plan_id, expires_at: expiresAt },
+//         { onConflict: ["user_id"] }
+//       )
+//       .select()
+//       .single();
+
+//     if (error) throw error;
+//     logger.info("Subscription updated", { userId, plan_id, expiresAt });
+//     return data;
+//   } catch (err) {
+//     logger.error("Upsert subscription failed", err);
+//     throw err;
+//   }
+// };
+
+
+
+
 import { supabase } from "../services/supabaseClient.js";
 import { initLogger } from "../utils/logger.js";
-import { TIERS } from "../utils/tiers.js";
-import { now } from "../utils/helper.js";
+// TIERS import removed as we now use the 'plans' table limits
 
 const logger = initLogger();
 
-
-
+/**
+ * GET SUBSCRIPTION: Fetches the current user's plan and remaining time
+ */
 export const getSubscription = async (req, res) => {
   try {
-    const userId = req.session.userId;
+    // ✅ CHANGE: Use JWT userId from middleware
+    const userId = req.user?.id;
 
+    if (!userId) {
+      return res.status(401).json({ msg: "Unauthorized: No user ID found" });
+    }
+
+    // ✅ CHANGE: Use !fk_plan to avoid the "more than one relationship" error
     const { data, error } = await supabase
       .from("subscriptions")
       .select(`
         id,
         plan_id,
+        status,
         expires_at,
-        plans (
+        plans!fk_plan (
             name,
+            chat_limit,
             tts_limit,
             stt_limit,
             s2s_limit
@@ -29,39 +107,71 @@ export const getSubscription = async (req, res) => {
       .maybeSingle();
 
     if (error) {
-      console.error("SUBSCRIPTION FETCH ERROR:", error);
-      return res.status(500).json({ msg: "Failed to load subscription" });
+      logger.error("SUBSCRIPTION FETCH ERROR:", error);
+      return res.status(500).json({ msg: "Failed to load subscription data" });
     }
 
-    if (!data) return res.status(404).json({ msg: "No subscription found" });
+    if (!data) {
+      return res.status(404).json({ msg: "No active subscription found for this user" });
+    }
 
-    res.json({ subscription: data });
+    // Return the combined data to the Flutter app
+    res.json({ 
+      success: true,
+      subscription: data 
+    });
+
   } catch (err) {
-    console.error("GET SUB ERROR:", err);
-    res.status(500).json({ msg: "Server error" });
+    logger.error("GET SUB ERROR:", err);
+    res.status(500).json({ msg: "Server error retrieving subscription" });
   }
 };
 
-
-// Renew or create subscription (after payment)
-export const upsertSubscription = async (userId, plan_id, durationDays) => {
+/**
+ * UPSERT SUBSCRIPTION: Called during Signup or after successful payment
+ */
+export const upsertSubscription = async (userId, plan_id, durationDays = 30) => {
   try {
-    const expiresAt = now() + durationDays * 24 * 3600;
+    // Calculate expiration date
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + durationDays);
 
     const { data, error } = await supabase
       .from("subscriptions")
       .upsert(
-        { user_id: userId, plan_id, expires_at: expiresAt },
-        { onConflict: ["user_id"] }
+        { 
+          user_id: userId, 
+          plan_id: plan_id, 
+          expires_at: expiresAt.toISOString(),
+          status: 'active' 
+        },
+        { onConflict: "user_id" }
       )
       .select()
       .single();
 
     if (error) throw error;
-    logger.info("Subscription updated", { userId, plan_id, expiresAt });
+    
+    logger.info("Subscription record UPSERTED", { userId, plan_id });
     return data;
   } catch (err) {
     logger.error("Upsert subscription failed", err);
     throw err;
   }
 };
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
