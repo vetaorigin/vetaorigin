@@ -132,6 +132,76 @@
 
 
 
+// import { now } from "./helper.js";
+// import { initLogger } from "./logger.js";
+// import { supabase } from "../services/supabaseClient.js";
+
+// const logger = initLogger();
+// const VALID_MODES = ["tts", "stt", "s2s", "chat"];
+
+// const PLAN_LIMITS = {
+//     free: { tts: 10, stt: 10, s2s: 10, chat: 10 },
+//     pro: { tts: 500, stt: 500, s2s: 500, chat: 500 }
+// };
+
+// export async function checkUsage(userId, mode) {
+//     try {
+//         // 1. Determine the user's plan
+//         const { data: sub } = await supabase
+//             .from("subscriptions")
+//             .select("plan_id")
+//             .eq("user_id", userId)
+//             .maybeSingle();
+
+//         const plan = sub?.plan_id || 'free'; 
+//         const limit = PLAN_LIMITS[plan][mode];
+
+//         // 2. Call your new SQL function
+//         const { data: usageData, error: usageError } = await supabase
+//             .rpc("get_daily_usage", { 
+//                 userid: userId, 
+//                 mode_name: mode 
+//             });
+
+//         if (usageError) {
+//             logger.error("RPC Error:", usageError);
+//             throw new Error("Usage check failed");
+//         }
+
+//         // The RPC returns an array; get daily_count from the first object
+//         const currentUsage = usageData[0]?.daily_count || 0;
+
+//         if (currentUsage >= limit) {
+//             throw new Error(`Daily ${mode} limit reached for your ${plan} plan.`);
+//         }
+
+//         return true;
+//     } catch (err) {
+//         logger.error("checkUsage error", err);
+//         throw err;
+//     }
+// }
+
+// export async function addUsage(userId, mode) {
+//     try {
+//         // Call the incrementer to add a new timestamped row
+//         const { error } = await supabase.rpc('increment_usage', { 
+//             uid: userId, 
+//             modename: mode 
+//         });
+
+//         if (error) throw error;
+//         logger.info(`Usage recorded for ${userId} [${mode}]`);
+//     } catch (err) {
+//         logger.error("addUsage error", err);
+//     }
+// }
+
+// export default checkUsage;
+
+
+
+
 import { now } from "./helper.js";
 import { initLogger } from "./logger.js";
 import { supabase } from "../services/supabaseClient.js";
@@ -139,40 +209,73 @@ import { supabase } from "../services/supabaseClient.js";
 const logger = initLogger();
 const VALID_MODES = ["tts", "stt", "s2s", "chat"];
 
-const PLAN_LIMITS = {
-    free: { tts: 10, stt: 10, s2s: 10, chat: 10 },
-    pro: { tts: 500, stt: 500, s2s: 500, chat: 500 }
-};
-
+/**
+ * CHECK USAGE: Validates if a user can perform an action based on their DB plan
+ */
 export async function checkUsage(userId, mode) {
     try {
-        // 1. Determine the user's plan
-        const { data: sub } = await supabase
+        logger.debug("Checking usage...", { userId, mode });
+
+        if (!VALID_MODES.includes(mode)) {
+            throw new Error("Invalid mode");
+        }
+
+        // 1. Fetch Subscription JOINED with Plans table to get dynamic limits
+        const { data: sub, error: subError } = await supabase
             .from("subscriptions")
-            .select("plan_id")
+            .select(`
+                expires_at,
+                plans (
+                    name,
+                    chat_limit,
+                    tts_limit,
+                    stt_limit,
+                    s2s_limit
+                )
+            `)
             .eq("user_id", userId)
             .maybeSingle();
 
-        const plan = sub?.plan_id || 'free'; 
-        const limit = PLAN_LIMITS[plan][mode];
-
-        // 2. Call your new SQL function
-        const { data: usageData, error: usageError } = await supabase
-            .rpc("get_daily_usage", { 
-                userid: userId, 
-                mode_name: mode 
-            });
-
-        if (usageError) {
-            logger.error("RPC Error:", usageError);
-            throw new Error("Usage check failed");
+        if (subError) {
+            logger.error("Database fetch error", subError);
+            throw new Error("Unable to verify subscription data");
         }
 
-        // The RPC returns an array; get daily_count from the first object
-        const currentUsage = usageData[0]?.daily_count || 0;
+        // 2. Handle Expiration
+        if (sub && sub.expires_at && new Date(sub.expires_at) < new Date()) {
+            throw new Error("Your subscription has expired");
+        }
 
-        if (currentUsage >= limit) {
-            throw new Error(`Daily ${mode} limit reached for your ${plan} plan.`);
+        // 3. Extract limits from the joined plan data (or default to a hardcoded "Guest" limit)
+        const userPlan = sub?.plans;
+        
+        // Map the database column names to your modes
+        const limitMap = {
+            chat: userPlan?.chat_limit ?? 5, // Defaulting to 5 if no plan found
+            tts: userPlan?.tts_limit ?? 5,
+            stt: userPlan?.stt_limit ?? 5,
+            s2s: userPlan?.s2s_limit ?? 5
+        };
+
+        const limit = limitMap[mode];
+
+        // 4. Fetch current rolling 24-hour usage via RPC
+        const { data: usageData, error: usageError } = await supabase.rpc("get_daily_usage", {
+            userid: userId,
+            mode_name: mode,
+        });
+
+        if (usageError) {
+            logger.error("RPC Error", usageError);
+            throw new Error("Unable to fetch usage count");
+        }
+
+        const used = usageData?.[0]?.daily_count ?? 0;
+
+        // 5. Limit check
+        if ((used + 1) > limit) {
+            logger.warn("Limit reached", { userId, mode, used, limit });
+            throw new Error(`Daily ${mode} limit of ${limit} reached for your ${userPlan?.name || 'free'} plan.`);
         }
 
         return true;
@@ -182,24 +285,23 @@ export async function checkUsage(userId, mode) {
     }
 }
 
+/**
+ * ADD USAGE: Records a single success event
+ */
 export async function addUsage(userId, mode) {
     try {
-        // Call the incrementer to add a new timestamped row
         const { error } = await supabase.rpc('increment_usage', { 
             uid: userId, 
             modename: mode 
         });
-
         if (error) throw error;
-        logger.info(`Usage recorded for ${userId} [${mode}]`);
+        logger.info(`Usage recorded: ${userId} [${mode}]`);
     } catch (err) {
         logger.error("addUsage error", err);
     }
 }
 
 export default checkUsage;
-
-
 
 
 
