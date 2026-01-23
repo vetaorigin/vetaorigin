@@ -390,7 +390,7 @@ export const sendMessage = async (req, res) => {
         const userId = req.user?.id; 
         if (!userId) return res.status(401).json({ msg: "Unauthorized" });
 
-        const { chatId, message, model = "gpt-4o" } = req.body;
+        const { chatId, message, model = "gpt-5.2" } = req.body;
         if (!message?.trim()) {
             return res.status(400).json({ msg: "Message content is required" });
         }
