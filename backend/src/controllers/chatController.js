@@ -455,7 +455,7 @@ export const sendMessage = async (req, res) => {
             const completion = await openai.chat.completions.create({
                 model,
                 messages: messagesForAI,
-                max_tokens: 1000,
+                max_completion_tokens: 1000,
                 user: userId // For OpenAI-side abuse monitoring
             });
             assistantText = completion.choices[0].message.content || "I couldn't generate a response.";
