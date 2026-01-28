@@ -15,7 +15,7 @@ export const googleLogin = async (req, res) => {
             provider: 'google',
             options: {
                 // Ensure APP_URL is https://vetaorigin-9.onrender.com in Render env
-                redirectTo: `${process.env.APP_URL}/api/auth/callback`,
+                redirectTo: `${process.env.APP_URL}/auth/callback`,
             },
         });
 
