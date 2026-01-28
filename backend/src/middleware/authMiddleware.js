@@ -24,7 +24,7 @@
 import { supabase } from "../services/supabaseClient.js";
 import { initLogger } from "../utils/logger.js";
 
-
+ const logger = initLogger();
 
 export const requireAuth = async (req, res, next) => {
   try {
