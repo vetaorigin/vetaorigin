@@ -21,66 +21,11 @@
 
 
 
-import { supabase } from "../services/supabaseClient.js";
-import { initLogger } from "../utils/logger.js";
+// import { supabase } from "../services/supabaseClient.js";
+// import { initLogger } from "../utils/logger.js";
 import jwt from "jsonwebtoken";
 
-const logger = initLogger();
 
-export const login = async (req, res) => {
-    try {
-        const { email, password } = req.body;
-
-        if (!email || !password) {
-            return res.status(400).json({ msg: "Email and password are required" });
-        }
-
-        // 1️⃣ Fetch user
-        const { data: user, error } = await supabase
-            .from("users")
-            .select("id, email, password_hash, is_active")
-            .eq("email", email)
-            .maybeSingle();
-
-        if (error || !user) {
-            return res.status(401).json({ msg: "Invalid credentials" });
-        }
-
-        if (!user.is_active) {
-            return res.status(403).json({ msg: "Account disabled" });
-        }
-
-        // 2️⃣ Compare password
-        const valid = await bcrypt.compare(password, user.password_hash);
-        if (!valid) {
-            return res.status(401).json({ msg: "Invalid credentials" });
-        }
-
-        // 3️⃣ Issue JWT
-        const token = jwt.sign(
-            {
-                id: user.id,
-                email: user.email
-            },
-            process.env.JWT_SECRET,
-            { expiresIn: "7d" }
-        );
-
-        // 4️⃣ Respond (NO saveAuth)
-        res.json({
-            msg: "Login successful",
-            token,
-            user: {
-                id: user.id,
-                email: user.email
-            }
-        });
-
-    } catch (err) {
-        logger.error("Login error", err);
-        res.status(500).json({ msg: "Server error" });
-    }
-};
 
 
 
