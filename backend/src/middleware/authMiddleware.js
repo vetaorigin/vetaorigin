@@ -26,38 +26,93 @@ import { initLogger } from "../utils/logger.js";
 
 const logger = initLogger();
 
-export const requireAuth = async (req, res, next) => {
-  try {
-    const authHeader = req.headers.authorization;
+export const login = async (req, res) => {
+    try {
+        const { email, password } = req.body;
 
-    // 1. Log the raw header first
-    console.log("DEBUG: Raw Auth Header ->", authHeader);
+        if (!email || !password) {
+            return res.status(400).json({ msg: "Email and password are required" });
+        }
 
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      logger.warn("Unauthorized: No Bearer token provided");
-      return res.status(401).json({ msg: "Unauthorized" });
+        // 1️⃣ Fetch user
+        const { data: user, error } = await supabase
+            .from("users")
+            .select("id, email, password_hash, is_active")
+            .eq("email", email)
+            .maybeSingle();
+
+        if (error || !user) {
+            return res.status(401).json({ msg: "Invalid credentials" });
+        }
+
+        if (!user.is_active) {
+            return res.status(403).json({ msg: "Account disabled" });
+        }
+
+        // 2️⃣ Compare password
+        const valid = await bcrypt.compare(password, user.password_hash);
+        if (!valid) {
+            return res.status(401).json({ msg: "Invalid credentials" });
+        }
+
+        // 3️⃣ Issue JWT
+        const token = jwt.sign(
+            {
+                id: user.id,
+                email: user.email
+            },
+            process.env.JWT_SECRET,
+            { expiresIn: "7d" }
+        );
+
+        // 4️⃣ Respond (NO saveAuth)
+        res.json({
+            msg: "Login successful",
+            token,
+            user: {
+                id: user.id,
+                email: user.email
+            }
+        });
+
+    } catch (err) {
+        logger.error("Login error", err);
+        res.status(500).json({ msg: "Server error" });
     }
-
-    // 2. Define the token FIRST
-    const token = authHeader.split(" ")[1];
-
-    // 3. NOW you can log the token safely
-    console.log("DEBUG: Extracted Token ->", token);
-
-    const { data: { user }, error } = await supabase.auth.getUser(token);
-
-    if (error || !user) {
-      logger.warn("Unauthorized: Invalid or expired token", { error: error?.message });
-      return res.status(401).json({ msg: "Unauthorized" });
-    }
-
-    req.user = user;
-    next();
-  } catch (err) {
-    logger.error("Auth middleware critical error", err);
-    res.status(500).json({ msg: "Server error", error: err.message });
-  }
 };
+
+// export const requireAuth = async (req, res, next) => {
+//   try {
+//     const authHeader = req.headers.authorization;
+
+//     // 1. Log the raw header first
+//     console.log("DEBUG: Raw Auth Header ->", authHeader);
+
+//     if (!authHeader || !authHeader.startsWith("Bearer ")) {
+//       logger.warn("Unauthorized: No Bearer token provided");
+//       return res.status(401).json({ msg: "Unauthorized" });
+//     }
+
+//     // 2. Define the token FIRST
+//     const token = authHeader.split(" ")[1];
+
+//     // 3. NOW you can log the token safely
+//     console.log("DEBUG: Extracted Token ->", token);
+
+//     const { data: { user }, error } = await supabase.auth.getUser(token);
+
+//     if (error || !user) {
+//       logger.warn("Unauthorized: Invalid or expired token", { error: error?.message });
+//       return res.status(401).json({ msg: "Unauthorized" });
+//     }
+
+//     req.user = user;
+//     next();
+//   } catch (err) {
+//     logger.error("Auth middleware critical error", err);
+//     res.status(500).json({ msg: "Server error", error: err.message });
+//   }
+// };
 
 
 
