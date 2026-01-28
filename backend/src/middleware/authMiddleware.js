@@ -21,11 +21,8 @@
 
 
 
-// import { supabase } from "../services/supabaseClient.js";
-// import { initLogger } from "../utils/logger.js";
-
-
-
+import { supabase } from "../services/supabaseClient.js";
+import { initLogger } from "../utils/logger.js";
 
 
 
