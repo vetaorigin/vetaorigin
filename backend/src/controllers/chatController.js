@@ -73,7 +73,7 @@ export const sendMessage = async (req, res) => {
         const userId = req.user?.id; 
         if (!userId) return res.status(401).json({ msg: "Unauthorized" });
 
-        const { chatId, message, model = "gpt-4" } = req.body;
+        const { chatId, message, model = "gpt-5.2" } = req.body;
         if (!message?.trim()) {
             return res.status(400).json({ msg: "Message content is required" });
         }
@@ -147,7 +147,7 @@ export const sendMessage = async (req, res) => {
             const completion = await openai.chat.completions.create({
                 model,
                 messages: messagesForAI,
-                max_tokens: 1000,
+                max_completion_tokens: 1000,
                 user: userId 
             });
             assistantText = completion.choices[0].message.content || "I couldn't generate a response.";
