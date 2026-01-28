@@ -1,7 +1,8 @@
 import bcrypt from "bcryptjs";
 import { supabase } from "../services/supabaseClient.js";
 import { initLogger } from "../utils/logger.js";
-import { upsertSubscription } from "../services/subscriptionService.js";
+import { upsertSubscription } from "../services/subscriptionService.js";;
+import jwt from "jsonwebtoken";
 
 const logger = initLogger();
 const FREE_PLAN_UUID = "1ef2f7f9-e383-449f-ad4c-965a74789043";
@@ -114,96 +115,99 @@ export const signup = async (req, res) => {
 /* ----------------------------------------------------
     LOGIN (Email/Password)
 ----------------------------------------------------- */
-export const login = async (req, res) => {
-    try {
-        const { email, password } = req.body;
-        if (!email || !password) return res.status(400).json({ msg: "Missing fields" });
-
-        const { data, error } = await supabase.auth.signInWithPassword({
-            email,
-            password,
-        });
-
-        if (error) return res.status(401).json({ msg: "Invalid credentials" });
-
-        const { data: profile } = await supabase
-            .from("users")
-            .select("username")
-            .eq("email", email)
-            .maybeSingle();
-
-        logger.info("User verified via Supabase Auth", { userId: data.user.id });
-
-        return res.json({
-            msg: "Logged in",
-            token: data.session.access_token,
-            user: { 
-                id: data.user.id, 
-                username: profile?.username || "user", 
-                email: data.user.email 
-            }
-        });
-
-    } catch (err) {
-        logger.error("LOGIN FAILED", err);
-        return res.status(500).json({ msg: "Server error" });
-    }
-};
-
 // export const login = async (req, res) => {
 //     try {
 //         const { email, password } = req.body;
+//         if (!email || !password) return res.status(400).json({ msg: "Missing fields" });
 
-//         if (!email || !password) {
-//             return res.status(400).json({ msg: "Email and password are required" });
-//         }
+//         const { data, error } = await supabase.auth.signInWithPassword({
+//             email,
+//             password,
+//         });
 
-//         // 1️⃣ Fetch user
-//         const { data: user, error } = await supabase
+//         if (error) return res.status(401).json({ msg: "Invalid credentials" });
+
+//         const { data: profile } = await supabase
 //             .from("users")
-//             .select("id, email, password_hash, is_active")
+//             .select("username")
 //             .eq("email", email)
 //             .maybeSingle();
 
-//         if (error || !user) {
-//             return res.status(401).json({ msg: "Invalid credentials" });
-//         }
+//         logger.info("User verified via Supabase Auth", { userId: data.user.id });
 
-//         if (!user.is_active) {
-//             return res.status(403).json({ msg: "Account disabled" });
-//         }
-
-//         // 2️⃣ Compare password
-//         const valid = await bcrypt.compare(password, user.password_hash);
-//         if (!valid) {
-//             return res.status(401).json({ msg: "Invalid credentials" });
-//         }
-
-//         // 3️⃣ Issue JWT
-//         const token = jwt.sign(
-//             {
-//                 id: user.id,
-//                 email: user.email
-//             },
-//             process.env.JWT_SECRET,
-//             { expiresIn: "7d" }
-//         );
-
-//         // 4️⃣ Respond (NO saveAuth)
-//         res.json({
-//             msg: "Login successful",
-//             token,
-//             user: {
-//                 id: user.id,
-//                 email: user.email
+//         return res.json({
+//             msg: "Logged in",
+//             token: data.session.access_token,
+//             user: { 
+//                 id: data.user.id, 
+//                 username: profile?.username || "user", 
+//                 email: data.user.email 
 //             }
 //         });
 
 //     } catch (err) {
-//         logger.error("Login error", err);
-//         res.status(500).json({ msg: "Server error" });
+//         logger.error("LOGIN FAILED", err);
+//         return res.status(500).json({ msg: "Server error" });
 //     }
 // };
+
+
+
+export const login = async (req, res) => {
+    try {
+        const { email, password } = req.body;
+
+        if (!email || !password) {
+            return res.status(400).json({ msg: "Email and password are required" });
+        }
+
+        // 1️⃣ Fetch user
+        const { data: user, error } = await supabase
+            .from("users")
+            .select("id, email, password_hash, is_active")
+            .eq("email", email)
+            .maybeSingle();
+
+        if (error || !user) {
+            return res.status(401).json({ msg: "Invalid credentials" });
+        }
+
+        if (!user.is_active) {
+            return res.status(403).json({ msg: "Account disabled" });
+        }
+
+        // 2️⃣ Compare password
+        const valid = await bcrypt.compare(password, user.password_hash);
+        if (!valid) {
+            return res.status(401).json({ msg: "Invalid credentials" });
+        }
+
+        // 3️⃣ Issue JWT
+        const token = jwt.sign(
+            {
+                id: user.id,
+                email: user.email
+            },
+            process.env.JWT_SECRET,
+            { expiresIn: "7d" }
+        );
+
+        // 4️⃣ Respond (NO saveAuth)
+        res.json({
+            msg: "Login successful",
+            token,
+            user: {
+                id: user.id,
+                email: user.email
+            }
+        });
+
+    } catch (err) {
+        logger.error("Login error", err);
+        res.status(500).json({ msg: "Server error" });
+    }
+};
+
 
 /* ----------------------------------------------------
     LOGOUT
