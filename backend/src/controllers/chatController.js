@@ -1,5 +1,6 @@
 // src/controllers/chatController.js
-import { supabaseAdmin as  supabase } from "../services/supabaseClient.js";
+// import { supabaseAdmin as  supabase } from "../services/supabaseClient.js";
+import { supabase, supabaseAdmin } from "../services/supabaseClient.js";
 import { openai } from "../config/openaiConfig.js";
 import { initLogger } from "../utils/logger.js";
 import { checkUsage, addUsage } from "../utils/rateLimiter.js";
