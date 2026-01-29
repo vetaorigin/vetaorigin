@@ -198,19 +198,23 @@ export const getChat = async (req, res) => {
         const userId = req.user.id;
         const { chatId } = req.params;
 
-        // ✅ Change 'supabase' to 'supabaseAdmin' to ensure RLS doesn't block the join
         const { data: chat, error } = await supabaseAdmin
             .from("chats")
-            .select("*, messages(*)")
+            .select(`
+                *,
+                messages!fk_chat (*)
+            `) // ✅ Added !fk_chat to resolve the ambiguity
             .eq("id", chatId)
             .eq("user_id", userId) 
-            .order("created_at", { foreignTable: "messages", ascending: true })
+            .order("created_at", { foreignTable: "messages!fk_chat", ascending: true })
             .maybeSingle();
 
-        if (error || !chat) {
+        if (error) {
             logger.error("getChat DB Error", error);
-            return res.status(404).json({ msg: "Chat not found" });
+            return res.status(500).json({ msg: "Database error" });
         }
+
+        if (!chat) return res.status(404).json({ msg: "Chat not found" });
 
         res.json(chat);
     } catch (err) {
