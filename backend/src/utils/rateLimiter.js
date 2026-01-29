@@ -162,7 +162,7 @@ const limits = {
             throw new Error("Unable to fetch usage count");
         }
 
-        const used = usageData?.[0]?.used ?? 0;
+        const used = usageData?.[0]?.daily_count?? 0;
 
         if ((used + 1) > limit) {
             throw new Error(`Daily ${mode} limit reached (${limit}) for your ${plan?.name || 'free'} plan.`);
