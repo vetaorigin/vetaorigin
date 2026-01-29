@@ -189,20 +189,27 @@ export const sendMessage = async (req, res) => {
 /* ----------------------------------------------------
     GET CHAT (Return single thread + messages)
 ----------------------------------------------------- */
+/* ----------------------------------------------------
+    GET CHAT (Updated to use Admin Client)
+----------------------------------------------------- */
 export const getChat = async (req, res) => {
     try {
         const userId = req.user.id;
         const { chatId } = req.params;
 
-        const { data: chat, error } = await supabase
+        // ✅ Change 'supabase' to 'supabaseAdmin' to ensure RLS doesn't block the join
+        const { data: chat, error } = await supabaseAdmin
             .from("chats")
             .select("*, messages(*)")
             .eq("id", chatId)
-            .eq("user_id", userId) // Ensure ownership
+            .eq("user_id", userId) 
             .order("created_at", { foreignTable: "messages", ascending: true })
             .maybeSingle();
 
-        if (error || !chat) return res.status(404).json({ msg: "Chat not found" });
+        if (error || !chat) {
+            logger.error("getChat DB Error", error);
+            return res.status(404).json({ msg: "Chat not found" });
+        }
 
         res.json(chat);
     } catch (err) {
@@ -210,6 +217,28 @@ export const getChat = async (req, res) => {
         res.status(500).json({ msg: "Server error" });
     }
 };
+
+// export const getChat = async (req, res) => {
+//     try {
+//         const userId = req.user.id;
+//         const { chatId } = req.params;
+
+//         const { data: chat, error } = await supabase
+//             .from("chats")
+//             .select("*, messages(*)")
+//             .eq("id", chatId)
+//             .eq("user_id", userId) // Ensure ownership
+//             .order("created_at", { foreignTable: "messages", ascending: true })
+//             .maybeSingle();
+
+//         if (error || !chat) return res.status(404).json({ msg: "Chat not found" });
+
+//         res.json(chat);
+//     } catch (err) {
+//         logger.error("getChat error", err);
+//         res.status(500).json({ msg: "Server error" });
+//     }
+// };
 
 /* ----------------------------------------------------
     LIST CHATS (Paginated sidebar list)
