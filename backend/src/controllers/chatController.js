@@ -201,9 +201,13 @@ export const getChat = async (req, res) => {
         const { data: chat, error } = await supabaseAdmin
             .from("chats")
             .select(`
-                *,
-                messages!fk_chat (*)
-            `) // ✅ Added !fk_chat to resolve the ambiguity
+                title,
+                model,
+                messages!fk_chat (
+                user_role,
+                  content
+                  )
+                  `) // ✅ Added !fk_chat to resolve the ambiguity
             .eq("id", chatId)
             .eq("user_id", userId) 
             .order("created_at", { foreignTable: "messages!fk_chat", ascending: true })
