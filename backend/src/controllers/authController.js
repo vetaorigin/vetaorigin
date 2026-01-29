@@ -72,42 +72,116 @@ export const googleCallback = async (req, res) => {
 export const signup = async (req, res) => {
     try {
         const { username, email, password } = req.body;
-        if (!username || !email || !password) return res.status(400).json({ msg: "Missing fields" });
+        if (!username || !email || !password) {
+            return res.status(400).json({ msg: "Missing fields" });
+        }
 
-        // 1. Create Auth User (Standard client is fine here)
+        // 1. Create Auth User 
+        // This handles the secure storage in Supabase's internal auth system
         const { data: authData, error: authErr } = await supabase.auth.signUp({
             email,
             password,
             options: { data: { username } }
         });
 
-        if (authErr) return res.status(400).json({ msg: authErr.message });
+        if (authErr) {
+            logger.error("SUPABASE AUTH ERROR", authErr);
+            return res.status(400).json({ msg: authErr.message });
+        }
 
         const userId = authData.user.id;
         const hashedPassword = await bcrypt.hash(password, 12);
 
+        // 🕒 CRITICAL: Wait 800ms to allow Supabase Auth to propagate
+        // This prevents "Foreign Key Violation" errors
+        await new Promise(resolve => setTimeout(resolve, 800));
+
         // 2. Create Profile row
-        // ✅ FIX: Use supabaseAdmin to bypass RLS "Insert" violation
+        // Using supabaseAdmin to bypass RLS
         const { data: newUser, error: createErr } = await supabaseAdmin
             .from("users")
-            .insert([{ id: userId, username, email, password: hashedPassword }])
+            .insert([{ 
+                id: userId, 
+                username: username, 
+                email: email, 
+                password: hashedPassword 
+            }])
             .select("id, username, email")
             .single();
 
         if (createErr) {
-            logger.error("INSERT USER ERROR", createErr);
-            return res.status(500).json({ msg: "Error creating profile" });
+            // This log will appear in your terminal/Render logs with the exact DB issue
+            logger.error("INSERT PROFILE ERROR:", {
+                message: createErr.message,
+                code: createErr.code,
+                details: createErr.details
+            });
+            
+            return res.status(500).json({ 
+                msg: "Database error saving new user", 
+                debug: createErr.message // This tells you exactly what is wrong
+            });
         }
 
-        await upsertSubscription(userId, FREE_PLAN_UUID);
+        // 3. Initialize Subscription
+        try {
+            await upsertSubscription(userId, FREE_PLAN_UUID);
+        } catch (subErr) {
+            logger.error("SUBSCRIPTION INIT ERROR", subErr);
+            // We don't return 500 here because the user account was actually created successfully
+        }
 
-        return res.json({ msg: "Account created successfully", user: newUser });
+        return res.json({ 
+            msg: "Account created successfully", 
+            user: newUser 
+        });
 
     } catch (err) {
-        logger.error("SIGNUP FAILED", err);
-        return res.status(500).json({ msg: "Server error" });
+        logger.error("SIGNUP CRITICAL FAILED", err);
+        return res.status(500).json({ msg: "Server error", error: err.message });
     }
 };
+
+// export const signup = async (req, res) => {
+//     try {
+//         const { username, email, password } = req.body;
+//         if (!username || !email || !password) return res.status(400).json({ msg: "Missing fields" });
+
+//         // 1. Create Auth User (Standard client is fine here)
+//         const { data: authData, error: authErr } = await supabase.auth.signUp({
+//             email,
+//             password,
+//             options: { data: { username } }
+//         });
+
+//         if (authErr) return res.status(400).json({ msg: authErr.message });
+
+//         const userId = authData.user.id;
+//         const hashedPassword = await bcrypt.hash(password, 12);
+
+//         // 2. Create Profile row
+//         // ✅ FIX: Use supabaseAdmin to bypass RLS "Insert" violation
+//         const { data: newUser, error: createErr } = await supabaseAdmin
+//             .from("users")
+//             .insert([{ id: userId, username, email, password: hashedPassword }])
+//             .select("id, username, email")
+//             .single();
+
+//         if (createErr) {
+//             logger.error("INSERT USER ERROR", createErr);
+//             return res.status(500).json({ msg: "Error creating profile" });
+//         }
+
+//         await upsertSubscription(userId, FREE_PLAN_UUID);
+
+//         return res.json({ msg: "Account created successfully", user: newUser });
+
+//     } catch (err) {
+//         logger.error("SIGNUP FAILED", err);
+//         return res.status(500).json({ msg: "Server error" });
+//     }
+// };
+
 
 /* ----------------------------------------------------
     LOGIN (Email/Password)
