@@ -203,10 +203,10 @@ export const getChat = async (req, res) => {
             .select(`
                 title,
                 messages!fk_chat (
-                user_role,
-                  content
-                  )
-                  `) // ✅ Added !fk_chat to resolve the ambiguity
+                    user_role,
+                    content
+                )
+            `)
             .eq("id", chatId)
             .eq("user_id", userId) 
             .order("created_at", { foreignTable: "messages!fk_chat", ascending: true })
@@ -219,34 +219,25 @@ export const getChat = async (req, res) => {
 
         if (!chat) return res.status(404).json({ msg: "Chat not found" });
 
-        res.json(chat);
+        // ✅ CLEANUP LOGIC: Remove asterisks and map to a clean structure
+        const cleanMessages = chat.messages.map(m => ({
+            role: m.user_role,
+            // Removes all double asterisks (**) and single asterisks (*) used for bold/italic
+            content: m.content.replace(/\*/g, '').trim() 
+        }));
+
+        // ✅ FINAL RESPONSE: Only title and clean messages
+        res.json({
+            title: chat.title,
+            messages: cleanMessages
+        });
+
     } catch (err) {
         logger.error("getChat error", err);
         res.status(500).json({ msg: "Server error" });
     }
 };
 
-// export const getChat = async (req, res) => {
-//     try {
-//         const userId = req.user.id;
-//         const { chatId } = req.params;
-
-//         const { data: chat, error } = await supabase
-//             .from("chats")
-//             .select("*, messages(*)")
-//             .eq("id", chatId)
-//             .eq("user_id", userId) // Ensure ownership
-//             .order("created_at", { foreignTable: "messages", ascending: true })
-//             .maybeSingle();
-
-//         if (error || !chat) return res.status(404).json({ msg: "Chat not found" });
-
-//         res.json(chat);
-//     } catch (err) {
-//         logger.error("getChat error", err);
-//         res.status(500).json({ msg: "Server error" });
-//     }
-// };
 
 /* ----------------------------------------------------
     LIST CHATS (Paginated sidebar list)
