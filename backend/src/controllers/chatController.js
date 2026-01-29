@@ -202,7 +202,6 @@ export const getChat = async (req, res) => {
             .from("chats")
             .select(`
                 title,
-                model,
                 messages!fk_chat (
                 user_role,
                   content
