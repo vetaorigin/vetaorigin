@@ -5,7 +5,7 @@ import { openai } from "../config/openaiConfig.js";
 import { initLogger } from "../utils/logger.js";
 import { checkUsage, addUsage } from "../utils/rateLimiter.js";
 
-const logger = initLogger();
+const logger = initLogger(); 
 
 // ==============================================================
 // 🤖 CHATBOT PERSONA DEFINITION
