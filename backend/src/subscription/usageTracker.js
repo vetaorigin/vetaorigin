@@ -4,7 +4,7 @@ import { initLogger } from "../utils/logger.js";
 const logger = initLogger();
 const VALID_TYPES = ["chat", "tts", "stt", "s2s"];
 
-/**
+/** 
  * Fetch usage for a specific type
  */
 export const getUsage = async (userId, type) => {
