@@ -1,6 +1,7 @@
+import crypto from "crypto"; // ✅ Added for Webhook verification
 import { initializeTransaction, verifyTransaction } from "../services/paystackService.js";
 import { upsertSubscription } from "../services/subscriptionService.js";
-import { supabase } from "../services/supabaseClient.js";
+import { supabase, supabaseAdmin } from "../services/supabaseClient.js"; // ✅ Added supabaseAdmin
 import { initLogger } from "../utils/logger.js";
 
 const logger = initLogger();
@@ -8,7 +9,7 @@ const logger = initLogger();
 const getPlanUuidByName = async (planName) => {
     if (!planName) return null;
     try {
-        const { data, error } = await supabase
+        const { data, error } = await supabaseAdmin // ✅ Use Admin to ensure plan lookup works
             .from("plans")
             .select("id")
             .eq("name", planName)
@@ -30,7 +31,6 @@ const getPlanUuidByName = async (planName) => {
 // ==============================================================
 export const initPayment = async (req, res) => {
     try {
-        // ✅ FIX: Use req.user.id (from JWT) instead of req.session
         const userId = req.user?.id; 
         if (!userId) return res.status(401).json({ msg: "Unauthorized" });
 
@@ -43,8 +43,7 @@ export const initPayment = async (req, res) => {
 
         const amount = Number(rawAmount) * 100;
 
-        // Fetch user email using admin/standard client
-        const { data: user, error: userErr } = await supabase
+        const { data: user, error: userErr } = await supabaseAdmin // ✅ Use Admin
             .from("users")
             .select("email")
             .eq("id", userId)
@@ -55,7 +54,6 @@ export const initPayment = async (req, res) => {
             return res.status(500).json({ msg: "User not found" });
         }
 
-        // ✅ Metadata: Standardize keys to lowercase just in case Paystack transforms them
         const metadata = {
             plan_name: planName,
             user_id: userId
@@ -77,7 +75,7 @@ export const initPayment = async (req, res) => {
 };
 
 // ======================================================================
-// VERIFY PAYMENT
+// VERIFY PAYMENT (Client-side Redirect)
 // ======================================================================
 export const verifyPayment = async (req, res) => {
     try {
@@ -92,43 +90,26 @@ export const verifyPayment = async (req, res) => {
             return res.status(400).json({ msg: "Invalid Paystack response" });
         }
 
-        // ✅ Handle Paystack's lowercase metadata conversion
         const metadata = payData?.metadata || {};
         const planName = (metadata.plan_name || metadata.planname)?.trim();
         const userId = (metadata.user_id || metadata.userid)?.trim();
 
-        logger.info("Verify Payment Metadata:", { planName, userId });
-        
-        let finalPlanId = null; 
-
         if (payData.status === "success" && userId && planName) {
-            finalPlanId = await getPlanUuidByName(planName);
-
+            const finalPlanId = await getPlanUuidByName(planName);
             if (finalPlanId) {
-                try {
-                    await upsertSubscription(userId, finalPlanId); 
-                    logger.info("Subscription updated successfully", { userId, finalPlanId });
-                } catch (subErr) {
-                    logger.error("Subscription update failed", subErr);
-                }
-            } else {
-                logger.error(`Plan UUID not found for: ${planName}`);
+                await upsertSubscription(userId, finalPlanId);
             }
 
             // Record the payment
-            const { error: insertError } = await supabase.from("payments").insert([
-                {
-                    reference: payData.reference,
-                    user_id: userId,
-                    plan_id: finalPlanId, 
-                    amount: payData.amount / 100,
-                    currency: payData.currency,
-                    status: payData.status,
-                    raw: payData
-                }
-            ]);
-
-            if (insertError) logger.error("Payment insert failed", insertError);
+            await supabaseAdmin.from("payments").insert([{
+                reference: payData.reference,
+                user_id: userId,
+                plan_id: finalPlanId, 
+                amount: payData.amount / 100,
+                currency: payData.currency,
+                status: payData.status,
+                raw: payData
+            }]);
 
             return res.json({ ok: true, data: payData });
         }
@@ -136,10 +117,55 @@ export const verifyPayment = async (req, res) => {
         return res.status(400).json({ msg: "Payment failed", data: payData });
 
     } catch (err) {
-        logger.error("verifyPayment error", { error: err.stack || err });
-        return res.status(500).json({ msg: "Payment verify failed", error: err.message });
+        logger.error("verifyPayment error", err);
+        return res.status(500).json({ msg: "Payment verify failed" });
     }
 };
+
+// ======================================================================
+// ✅ NEW: HANDLE PAYSTACK WEBHOOK (Server-to-Server)
+// ======================================================================
+export const handlePaystackWebhook = async (req, res) => {
+    try {
+        // 1. Validate signature to ensure request is actually from Paystack
+        const secret = process.env.PAYSTACK_SECRET_KEY;
+        const hash = crypto.createHmac('sha512', secret)
+                           .update(JSON.stringify(req.body))
+                           .digest('hex');
+
+        if (hash !== req.headers['x-paystack-signature']) {
+            logger.warn("Invalid Webhook Signature detected");
+            return res.status(401).send('Unauthorized');
+        }
+
+        const event = req.body;
+
+        // 2. Process success event
+        if (event.event === 'charge.success') {
+            const payData = event.data;
+            const metadata = payData.metadata || {};
+            const userId = metadata.user_id || metadata.userid;
+            const planName = metadata.plan_name || metadata.planname;
+
+            logger.info("Webhook: Processing charge.success", { userId, planName });
+
+            if (userId && planName) {
+                const finalPlanId = await getPlanUuidByName(planName);
+                if (finalPlanId) {
+                    await upsertSubscription(userId, finalPlanId);
+                    logger.info("Webhook: Subscription updated");
+                }
+            }
+        }
+
+        // 3. Always respond with 200 to acknowledge receipt
+        return res.status(200).send('Event Received');
+
+    } catch (err) {
+        logger.error("Webhook Handler Error", err);
+        return res.status(500).send('Internal Error');
+    }
+};;
 
 
 
