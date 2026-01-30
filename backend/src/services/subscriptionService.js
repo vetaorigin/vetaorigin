@@ -98,32 +98,36 @@ export const upsertSubscription = async (userId, planId) => {
             return null;
         }
 
-        // Calculate expiration (Now + 30 days)
-        const expiresAtValue = new Date((now() + (DURATION_DAYS * ONE_DAY_SECONDS)) * ONE_SECOND_MS).toISOString();
+        // 1. Calculate expiration (30 Days from now)
+        // Using standard JS Date to avoid "now()" or "DURATION_DAYS" reference errors
+        const expiresAtValue = new Date();
+        expiresAtValue.setDate(expiresAtValue.getDate() + 30);
 
-        // -----------------------------------------
-        // ✅ USE .upsert(): Cleaner and handles conflict automatically
-        // -----------------------------------------
+        // 2. Prepare the payload
+        // 🛑 REMOVED 'updated_at' because it's not in your table columns
+        const payload = {
+            user_id: userId,
+            plan_id: planId,
+            expires_at: expiresAtValue.toISOString(),
+        };
+
+        // 3. Perform Upsert
         const { data, error } = await supabaseAdmin
             .from("subscriptions")
-            .upsert({
-                user_id: userId,
-                plan_id: planId,
-                expires_at: expiresAtValue,
-                updated_at: new Date().toISOString()
-            }, { 
-                onConflict: 'user_id', // Ensures it updates if user already has a row
+            .upsert(payload, { 
+                onConflict: 'user_id', 
                 ignoreDuplicates: false 
             })
             .select()
             .single();
 
         if (error) {
+            // This will tell you EXACTLY what is wrong in your Render logs
             logger.error("SUBSCRIPTION UPSERT FAILED", error);
             return null;
         }
 
-        logger.info("SUBSCRIPTION UPSERT SUCCESSFUL", { userId, planId, expiresAt: expiresAtValue });
+        logger.info("SUBSCRIPTION UPSERT SUCCESSFUL", { userId, planId });
         return data;
 
     } catch (err) {
@@ -131,8 +135,6 @@ export const upsertSubscription = async (userId, planId) => {
         return null;
     }
 };
-
-
 
 
 // import { supabase } from "./supabaseClient.js";
