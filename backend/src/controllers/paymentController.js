@@ -6,7 +6,7 @@ import { initLogger } from "../utils/logger.js";
 
 const logger = initLogger();
 
-const getPlanUuidByName = async (planName) => {
+export const getPlanUuidByName = async (planName) => {
     if (!planName) return null;
     try {
         const { data, error } = await supabaseAdmin
