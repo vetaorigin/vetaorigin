@@ -2,7 +2,7 @@
 import { supabase, supabaseAdmin } from "./supabaseClient.js"; 
 import { initLogger } from "../utils/logger.js";
 import { now } from "../utils/helper.js"; // Returns SECONDS
-import { TIERS } from "../utils/tiers.js"; 
+import { TIERS } from "../utils/tiers.js";  
 
 const logger = initLogger();
 
