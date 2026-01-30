@@ -49,33 +49,41 @@ const getPlanUuidByName = async (planName) => {
 // ==============================================================
 // INIT PAYMENT
 // ==============================================================
+
 export const initPayment = async (req, res) => {
     try {
         const userId = req.user?.id; 
         if (!userId) return res.status(401).json({ msg: "Unauthorized" });
 
-        const planName = req.body.plan_id || req.body.planId;
+        // 1. Flexible Mapping: Handles 'plan_id', 'planId', or 'name'
+        // 2. Sanitation: Trims whitespace to prevent " Basic" vs "Basic" errors
+        const rawPlanName = req.body.plan_id || req.body.planId || req.body.name;
+        const planName = rawPlanName?.toString().trim();
         const rawAmount = req.body.amount || req.body.price;
 
         if (!planName || !rawAmount) {
-            return res.status(400).json({ msg: "plan_id (name) & amount required" });
+            return res.status(400).json({ 
+                msg: "Plan name (planId) and amount are required" 
+            });
         }
 
-        const amount = Number(rawAmount) * 100;
+        const amount = Number(rawAmount) * 100; // Paystack expects Kobo/Cents
 
-        const { data: user, error: userErr } = await supabaseAdmin // ✅ Use Admin
+        // Fetch user email using Admin client to bypass RLS
+        const { data: user, error: userErr } = await supabaseAdmin
             .from("users")
             .select("email")
             .eq("id", userId)
             .maybeSingle();
 
         if (userErr || !user) {
-            logger.error("User fetch failed", { error: userErr });
+            logger.error("User fetch failed during payment init", { error: userErr });
             return res.status(500).json({ msg: "User not found" });
         }
 
+        // Standardized metadata keys for the Webhook to read later
         const metadata = {
-            plan_name: planName,
+            plan_name: planName, // Matches your 'Basic' vs 'basic' logic
             user_id: userId
         };
 
@@ -85,7 +93,7 @@ export const initPayment = async (req, res) => {
             metadata
         });
 
-        logger.info("Payment initialized successfully", { planName, userId });
+        logger.info("Payment initialized", { planName, userId, reference: init.data.reference });
         return res.json(init);
 
     } catch (err) {
@@ -93,6 +101,51 @@ export const initPayment = async (req, res) => {
         return res.status(500).json({ msg: "Payment init failed", error: err.message });
     }
 };
+
+// export const initPayment = async (req, res) => {
+//     try {
+//         const userId = req.user?.id; 
+//         if (!userId) return res.status(401).json({ msg: "Unauthorized" });
+
+//         const planName = req.body.plan_id || req.body.planId;
+//         const rawAmount = req.body.amount || req.body.price;
+
+//         if (!planName || !rawAmount) {
+//             return res.status(400).json({ msg: "plan_id (name) & amount required" });
+//         }
+
+//         const amount = Number(rawAmount) * 100;
+
+//         const { data: user, error: userErr } = await supabaseAdmin // ✅ Use Admin
+//             .from("users")
+//             .select("email")
+//             .eq("id", userId)
+//             .maybeSingle();
+
+//         if (userErr || !user) {
+//             logger.error("User fetch failed", { error: userErr });
+//             return res.status(500).json({ msg: "User not found" });
+//         }
+
+//         const metadata = {
+//             plan_name: planName,
+//             user_id: userId
+//         };
+
+//         const init = await initializeTransaction({
+//             amount,
+//             email: user.email,
+//             metadata
+//         });
+
+//         logger.info("Payment initialized successfully", { planName, userId });
+//         return res.json(init);
+
+//     } catch (err) {
+//         logger.error("initPayment error", { error: err.stack || err });
+//         return res.status(500).json({ msg: "Payment init failed", error: err.message });
+//     }
+// };
 
 // ======================================================================
 // VERIFY PAYMENT (Client-side Redirect)
