@@ -26,50 +26,47 @@ export const getPlanUuidByName = async (planName) => {
     }
 };
 
-// const getPlanUuidByName = async (planName) => {
-//     if (!planName) return null;
-//     try {
-//         const { data, error } = await supabaseAdmin // ✅ Use Admin to ensure plan lookup works
-//             .from("plans")
-//             .select("id")
-//             .eq("name", planName)
-//             .maybeSingle();
-
-//         if (error || !data) {
-//             logger.warn(`Could not find UUID for plan name: ${planName}`, error);
-//             return null;
-//         }
-//         return data.id;
-//     } catch (err) {
-//         logger.error("Error fetching plan UUID by name", err);
-//         return null;
-//     }
-// }
 
 // ==============================================================
 // INIT PAYMENT
 // ==============================================================
-
 export const initPayment = async (req, res) => {
     try {
         const userId = req.user?.id; 
         if (!userId) return res.status(401).json({ msg: "Unauthorized" });
 
-        // 1. Flexible Mapping: Handles 'plan_id', 'planId', or 'name'
-        // 2. Sanitation: Trims whitespace to prevent " Basic" vs "Basic" errors
+        // 1. Get the plan name from the request
         const rawPlanName = req.body.plan_id || req.body.planId || req.body.name;
         const planName = rawPlanName?.toString().trim();
-        const rawAmount = req.body.amount || req.body.price;
 
-        if (!planName || !rawAmount) {
-            return res.status(400).json({ 
-                msg: "Plan name (planId) and amount are required" 
-            });
+        if (!planName) {
+            return res.status(400).json({ msg: "Plan name (planId) is required" });
         }
 
-        const amount = Number(rawAmount) * 100; // Paystack expects Kobo/Cents
+        // 2. Fetch the REAL plan details from your 'plans' table
+        // We fetch the price from the DB so we don't have to trust the frontend amount
+        const { data: plan, error: planErr } = await supabaseAdmin
+            .from("plans")
+            .select("id, name, price")
+            .ilike("name", planName) 
+            .maybeSingle();
 
-        // Fetch user email using Admin client to bypass RLS
+        if (planErr || !plan) {
+            logger.error("Plan lookup failed", { planName, error: planErr });
+            return res.status(404).json({ msg: "Invalid plan selected" });
+        }
+
+        // 3. Validation: Optional check if frontend sent an amount
+        const sentAmount = req.body.amount || req.body.price;
+        if (sentAmount && Number(sentAmount) !== Number(plan.price)) {
+            logger.warn("Price mismatch detected!", { userId, sent: sentAmount, actual: plan.price });
+            return res.status(400).json({ msg: `Price mismatch. ${plan.name} costs ${plan.price}` });
+        }
+
+        // 4. Use the Database price for the transaction
+        const amountInKobo = Number(plan.price) * 100;
+
+        // Fetch user email
         const { data: user, error: userErr } = await supabaseAdmin
             .from("users")
             .select("email")
@@ -77,23 +74,27 @@ export const initPayment = async (req, res) => {
             .maybeSingle();
 
         if (userErr || !user) {
-            logger.error("User fetch failed during payment init", { error: userErr });
-            return res.status(500).json({ msg: "User not found" });
+            return res.status(500).json({ msg: "User account not found" });
         }
 
-        // Standardized metadata keys for the Webhook to read later
+        // 5. Standardized metadata
         const metadata = {
-            plan_name: planName, // Matches your 'Basic' vs 'basic' logic
+            plan_name: plan.name, // Use the sanitized name from DB
             user_id: userId
         };
 
         const init = await initializeTransaction({
-            amount,
+            amount: amountInKobo,
             email: user.email,
             metadata
         });
 
-        logger.info("Payment initialized", { planName, userId, reference: init.data.reference });
+        logger.info("Secure Payment initialized", { 
+            planName: plan.name, 
+            amount: plan.price, 
+            reference: init.data.reference 
+        });
+        
         return res.json(init);
 
     } catch (err) {
@@ -107,28 +108,35 @@ export const initPayment = async (req, res) => {
 //         const userId = req.user?.id; 
 //         if (!userId) return res.status(401).json({ msg: "Unauthorized" });
 
-//         const planName = req.body.plan_id || req.body.planId;
+//         // 1. Flexible Mapping: Handles 'plan_id', 'planId', or 'name'
+//         // 2. Sanitation: Trims whitespace to prevent " Basic" vs "Basic" errors
+//         const rawPlanName = req.body.plan_id || req.body.planId || req.body.name;
+//         const planName = rawPlanName?.toString().trim();
 //         const rawAmount = req.body.amount || req.body.price;
 
 //         if (!planName || !rawAmount) {
-//             return res.status(400).json({ msg: "plan_id (name) & amount required" });
+//             return res.status(400).json({ 
+//                 msg: "Plan name (planId) and amount are required" 
+//             });
 //         }
 
-//         const amount = Number(rawAmount) * 100;
+//         const amount = Number(rawAmount) * 100; // Paystack expects Kobo/Cents
 
-//         const { data: user, error: userErr } = await supabaseAdmin // ✅ Use Admin
+//         // Fetch user email using Admin client to bypass RLS
+//         const { data: user, error: userErr } = await supabaseAdmin
 //             .from("users")
 //             .select("email")
 //             .eq("id", userId)
 //             .maybeSingle();
 
 //         if (userErr || !user) {
-//             logger.error("User fetch failed", { error: userErr });
+//             logger.error("User fetch failed during payment init", { error: userErr });
 //             return res.status(500).json({ msg: "User not found" });
 //         }
 
+//         // Standardized metadata keys for the Webhook to read later
 //         const metadata = {
-//             plan_name: planName,
+//             plan_name: planName, // Matches your 'Basic' vs 'basic' logic
 //             user_id: userId
 //         };
 
@@ -138,7 +146,7 @@ export const initPayment = async (req, res) => {
 //             metadata
 //         });
 
-//         logger.info("Payment initialized successfully", { planName, userId });
+//         logger.info("Payment initialized", { planName, userId, reference: init.data.reference });
 //         return res.json(init);
 
 //     } catch (err) {
@@ -146,6 +154,8 @@ export const initPayment = async (req, res) => {
 //         return res.status(500).json({ msg: "Payment init failed", error: err.message });
 //     }
 // };
+
+
 
 // ======================================================================
 // VERIFY PAYMENT (Client-side Redirect)
