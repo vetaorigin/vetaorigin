@@ -12,7 +12,7 @@ import chatRoutes from "./routes/chat.js";
 import translateRoutes from "./routes/translate.js";
 import subscriptionRoutes from "./routes/subscription.js";
 import paymentRoutes from "./routes/payment.js";
-import paystackWebhook from "./controllers/webhookController.js";
+import { paystackWebhook } from "./controllers/webhookController.js";
 import { initLogger } from "./utils/logger.js";
 
 dotenv.config();
