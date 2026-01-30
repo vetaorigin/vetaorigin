@@ -9,22 +9,42 @@ const logger = initLogger();
 const getPlanUuidByName = async (planName) => {
     if (!planName) return null;
     try {
-        const { data, error } = await supabaseAdmin // ✅ Use Admin to ensure plan lookup works
+        const { data, error } = await supabaseAdmin
             .from("plans")
             .select("id")
-            .eq("name", planName)
+            .ilike("name", planName) // ✅ Case-insensitive: matches 'Basic' or 'basic'
             .maybeSingle();
 
         if (error || !data) {
-            logger.warn(`Could not find UUID for plan name: ${planName}`, error);
+            logger.warn(`Plan not found in DB: ${planName}`);
             return null;
         }
         return data.id;
     } catch (err) {
-        logger.error("Error fetching plan UUID by name", err);
+        logger.error("Database error fetching plan", err);
         return null;
     }
-}
+};
+
+// const getPlanUuidByName = async (planName) => {
+//     if (!planName) return null;
+//     try {
+//         const { data, error } = await supabaseAdmin // ✅ Use Admin to ensure plan lookup works
+//             .from("plans")
+//             .select("id")
+//             .eq("name", planName)
+//             .maybeSingle();
+
+//         if (error || !data) {
+//             logger.warn(`Could not find UUID for plan name: ${planName}`, error);
+//             return null;
+//         }
+//         return data.id;
+//     } catch (err) {
+//         logger.error("Error fetching plan UUID by name", err);
+//         return null;
+//     }
+// }
 
 // ==============================================================
 // INIT PAYMENT
