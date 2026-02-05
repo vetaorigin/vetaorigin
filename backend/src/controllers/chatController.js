@@ -148,7 +148,7 @@ export const sendMessage = async (req, res) => {
             const completion = await openai.chat.completions.create({
                 model,
                 messages: messagesForAI,
-                max_completion_tokens: 1000,
+                max_completion_tokens: 2000,
                 user: userId 
             });
             assistantText = completion.choices[0].message.content || "I couldn't generate a response.";
