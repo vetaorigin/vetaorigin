@@ -81,29 +81,4 @@ const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => {
   logger.info(`Veta Origin Backend running on port ${PORT} (Stateless JWT Mode)`);
 });
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+server.timeout = 120000;
