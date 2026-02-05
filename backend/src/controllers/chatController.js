@@ -70,11 +70,10 @@ This team works directly under the direction and vision of the Founder/CEO, ensu
 ----------------------------------------------------- */
 export const sendMessage = async (req, res) => {
     try {
-        // 1. Authenticated User (From JWT Middleware)
         const userId = req.user?.id; 
         if (!userId) return res.status(401).json({ msg: "Unauthorized" });
 
-        const { chatId, message, model = "gpt-5.2" } = req.body;
+        const { chatId, message, model = "gpt-4" } = req.body;
         if (!message?.trim()) {
             return res.status(400).json({ msg: "Message content is required" });
         }
@@ -90,7 +89,6 @@ export const sendMessage = async (req, res) => {
         // 3. Ensure Chat exists or Create New
         let chat;
         if (chatId) {
-            // Using admin client bypasses RLS, but we manually check ownership
             const { data: c, error: cErr } = await supabase
                 .from("chats")
                 .select("*")
@@ -98,22 +96,16 @@ export const sendMessage = async (req, res) => {
                 .maybeSingle();
 
             if (cErr || !c) return res.status(404).json({ msg: "Chat not found" });
-            
-            // SECURITY: Ensure the person asking owns this chat
-            if (c.user_id !== userId) return res.status(403).json({ msg: "Forbidden: Not your chat" });
+            if (c.user_id !== userId) return res.status(403).json({ msg: "Forbidden" });
             chat = c;
         } else {
-            // Create a new thread using admin privileges
             const { data: newChat, error: nErr } = await supabase
                 .from("chats")
                 .insert([{ user_id: userId, model, title: message.substring(0, 50) }])
                 .select()
                 .single();
             
-            if (nErr) {
-                logger.error("CHAT INIT ERROR", nErr);
-                throw new Error("Failed to initialize chat thread");
-            }
+            if (nErr) throw new Error("Failed to initialize chat thread");
             chat = newChat;
         }
 
@@ -142,17 +134,27 @@ export const sendMessage = async (req, res) => {
             }))
         ];
 
-        // 6. Request Completion from OpenAI
+        // -----------------------------------------------------
+        // 6. FIXED: Request Completion with Stream Handling
+        // -----------------------------------------------------
         let assistantText = "";
         try {
-            const completion = await openai.chat.completions.create({
+            const stream = await openai.chat.completions.create({
                 model,
                 messages: messagesForAI,
-                max_completion_tokens: 2000,
+                max_completion_tokens: 2000, // Increased for longer responses
                 stream: true,
                 user: userId 
             });
-            assistantText = completion.choices[0].message.content || "I couldn't generate a response.";
+
+            // Consume the stream chunk by chunk
+            for await (const chunk of stream) {
+                const content = chunk.choices[0]?.delta?.content || "";
+                assistantText += content;
+            }
+
+            if (!assistantText) assistantText = "I couldn't generate a response.";
+
         } catch (err) {
             logger.error("OpenAI API Failure", err);
             assistantText = "Service temporary unavailable. Please try again later.";
@@ -166,13 +168,9 @@ export const sendMessage = async (req, res) => {
             .single();
 
         // 8. Record Usage
-        try {
-            await addUsage(userId, "chat");
-        } catch (usageErr) {
-            logger.error("Usage recording failed", usageErr);
-        }
+        try { await addUsage(userId, "chat"); } catch (e) { logger.error("Usage error", e); }
 
-        // 9. Response
+        // 9. Final JSON Response
         res.json({
             chatId: chat.id,
             reply: assistantText,
@@ -183,10 +181,131 @@ export const sendMessage = async (req, res) => {
         });
 
     } catch (err) {
-        logger.error("sendMessage critical error", { stack: err.stack, message: err.message });
+        logger.error("sendMessage critical error", { stack: err.stack });
         res.status(500).json({ msg: "Internal Server Error" });
     }
 };
+
+
+// export const sendMessage = async (req, res) => {
+//     try {
+//         // 1. Authenticated User (From JWT Middleware)
+//         const userId = req.user?.id; 
+//         if (!userId) return res.status(401).json({ msg: "Unauthorized" });
+
+//         const { chatId, message, model = "gpt-5.2" } = req.body;
+//         if (!message?.trim()) {
+//             return res.status(400).json({ msg: "Message content is required" });
+//         }
+
+//         // 2. Pre-flight Rate Limit Check
+//         try {
+//             await checkUsage(userId, "chat");
+//         } catch (err) {
+//             logger.warn("Usage limit hit", { userId, msg: err.message });
+//             return res.status(429).json({ msg: err.message });
+//         }
+
+//         // 3. Ensure Chat exists or Create New
+//         let chat;
+//         if (chatId) {
+//             // Using admin client bypasses RLS, but we manually check ownership
+//             const { data: c, error: cErr } = await supabase
+//                 .from("chats")
+//                 .select("*")
+//                 .eq("id", chatId)
+//                 .maybeSingle();
+
+//             if (cErr || !c) return res.status(404).json({ msg: "Chat not found" });
+            
+//             // SECURITY: Ensure the person asking owns this chat
+//             if (c.user_id !== userId) return res.status(403).json({ msg: "Forbidden: Not your chat" });
+//             chat = c;
+//         } else {
+//             // Create a new thread using admin privileges
+//             const { data: newChat, error: nErr } = await supabase
+//                 .from("chats")
+//                 .insert([{ user_id: userId, model, title: message.substring(0, 50) }])
+//                 .select()
+//                 .single();
+            
+//             if (nErr) {
+//                 logger.error("CHAT INIT ERROR", nErr);
+//                 throw new Error("Failed to initialize chat thread");
+//             }
+//             chat = newChat;
+//         }
+
+//         // 4. Persist User Message
+//         const { data: userMsg, error: uMsgErr } = await supabase
+//             .from("messages")
+//             .insert([{ chat_id: chat.id, user_role: "user", content: message }])
+//             .select()
+//             .single();
+
+//         if (uMsgErr) throw uMsgErr;
+
+//         // 5. Gather History for Context
+//         const { data: history } = await supabase
+//             .from("messages")
+//             .select("user_role, content")
+//             .eq("chat_id", chat.id)
+//             .order("created_at", { ascending: true })
+//             .limit(20);
+
+//         const messagesForAI = [
+//             CHATBOT_PERSONA,
+//             ...(history || []).map(m => ({
+//                 role: m.user_role === "user" ? "user" : "assistant",
+//                 content: m.content
+//             }))
+//         ];
+
+//         // 6. Request Completion from OpenAI
+//         let assistantText = "";
+//         try {
+//             const completion = await openai.chat.completions.create({
+//                 model,
+//                 messages: messagesForAI,
+//                 max_completion_tokens: 2000,
+//                 stream: true,
+//                 user: userId 
+//             });
+//             assistantText = completion.choices[0].message.content || "I couldn't generate a response.";
+//         } catch (err) {
+//             logger.error("OpenAI API Failure", err);
+//             assistantText = "Service temporary unavailable. Please try again later.";
+//         }
+
+//         // 7. Save Assistant Message
+//         const { data: assistantMsg, error: aMsgErr } = await supabase
+//             .from("messages")
+//             .insert([{ chat_id: chat.id, user_role: "assistant", content: assistantText }])
+//             .select()
+//             .single();
+
+//         // 8. Record Usage
+//         try {
+//             await addUsage(userId, "chat");
+//         } catch (usageErr) {
+//             logger.error("Usage recording failed", usageErr);
+//         }
+
+//         // 9. Response
+//         res.json({
+//             chatId: chat.id,
+//             reply: assistantText,
+//             messages: {
+//                 user: userMsg,
+//                 assistant: assistantMsg
+//             }
+//         });
+
+//     } catch (err) {
+//         logger.error("sendMessage critical error", { stack: err.stack, message: err.message });
+//         res.status(500).json({ msg: "Internal Server Error" });
+//     }
+// };
 
 /* ----------------------------------------------------
     GET CHAT (Return single thread + messages)
