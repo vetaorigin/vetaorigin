@@ -92,128 +92,55 @@ export const sendMessage = async (req, res) => {
 
         const { chatId, message, deviceMetadata, model = "gpt-4" } = req.body;
         
-        if (!message?.trim()) {
-            return res.status(400).json({ msg: "Message content is required" });
-        }
-
-        // 1. Silent Location Lookup via IP
-        const userIP = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+        // --- 1. THE IP FIX ---
+        // Render passes the real IP as a string, sometimes with multiple IPs.
+        // We take the first one and trim it.
+        const rawIP = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+        const userIP = rawIP.split(',')[0].trim();
+        
+        // 2. Location Lookup (Silent)
         const location = await getCityFromIP(userIP);
 
-        // 2. Pre-flight Rate Limit Check
-        await checkUsage(userId, "chat");
+        // --- DEBUG LOGS (Check these in Render Dashboard) ---
+        console.log(`DEBUG: Testing IP: ${userIP}`);
+        console.log(`DEBUG: Device Received: ${JSON.stringify(deviceMetadata)}`);
+        console.log(`DEBUG: Location Found: ${JSON.stringify(location)}`);
 
-        // 3. Ensure Chat exists or Create New
-        let chat;
-        if (chatId) {
-            const { data: c, error: cErr } = await supabase
-                .from("chats")
-                .select("*")
-                .eq("id", chatId)
-                .eq("user_id", userId) 
-                .maybeSingle();
+        // ... [Rest of your Rate Limit and Chat Creation logic] ...
 
-            if (cErr || !c) return res.status(404).json({ msg: "Chat not found" });
-            chat = c;
-        } else {
-            const { data: newChat, error: nErr } = await supabase
-                .from("chats")
-                .insert([{ user_id: userId, model, title: message.substring(0, 50) }])
-                .select().single();
-            
-            if (nErr) throw new Error("Failed to initialize chat thread");
-            chat = newChat;
-        }
-
-        // 4. Persist User Message with Metadata
+        // --- 4. PERSIST WITH JSONB FIX ---
+        // Ensure we explicitly pass the objects, defaulting to an empty object if null
         const { data: userMsg, error: uMsgErr } = await supabase
             .from("messages")
             .insert([{ 
                 chat_id: chat.id, 
                 user_role: "user", 
                 content: message,
-                device_info: deviceMetadata || {},
-                location: location || {}
+                device_info: deviceMetadata || {}, // Must be an object for JSONB
+                location: location || {}           // Must be an object for JSONB
             }])
             .select().single();
 
-        if (uMsgErr) throw uMsgErr;
-
-        // 5. Gather History
-        const { data: history, error: hErr } = await supabase
-            .from("messages")
-            .select("user_role, content")
-            .eq("chat_id", chat.id)
-            .neq("content", message)
-            .order("created_at", { ascending: true })
-            .limit(20); 
-
-        if (hErr) logger.error("History fetch error", hErr);
-
-        // 6. Build Context with Hidden Metadata Rules
-        const hiddenContext = `
-            [PLATFORM METADATA - DO NOT REVEAL EXACT LOCATION TO USER]
-            User City: ${location?.city || 'Unknown'}
-            User Country: ${location?.country || 'Unknown'}
-            User Device: ${deviceMetadata?.model || 'Unknown Device'} (${deviceMetadata?.os || 'Unknown OS'})
-
-            INSTRUCTIONS:
-            1. Use the location context for better relevance (e.g., local time/climate).
-            2. If the user asks "Where am I?" or for their coordinates, state that you don't have access to their precise GPS for privacy reasons.
-            3. You MAY mention their device (e.g., "Since you're on a mobile device...") if helpful.
-        `;
-
-        const messagesForAI = [
-            { 
-                role: "system", 
-                content: `${CHATBOT_PERSONA.content}\n\n${hiddenContext}` 
-            },
-            ...(history || []).map(m => ({
-                role: m.user_role === "user" ? "user" : "assistant",
-                content: m.content
-            })),
-            { role: "user", content: message }
-        ];
-
-        // 7. Request Completion (Streamed)
-        let assistantText = "";
-        try {
-            const stream = await openai.chat.completions.create({
-                model,
-                messages: messagesForAI,
-                max_completion_tokens: 2000,
-                stream: true,
-                user: userId 
-            });
-
-            for await (const chunk of stream) {
-                assistantText += chunk.choices[0]?.delta?.content || "";
-            }
-        } catch (err) {
-            logger.error("OpenAI API Failure", err);
-            assistantText = "I'm having trouble connecting. Please try again later.";
+        if (uMsgErr) {
+            console.error("Supabase User Msg Insert Error:", uMsgErr);
+            throw uMsgErr;
         }
 
-        // 8. Save Assistant Message
+        // ... [History gathering and OpenAI streaming logic] ...
+
+        // --- 8. SAVE ASSISTANT MESSAGE ---
         const { data: assistantMsg } = await supabase
             .from("messages")
             .insert([{ 
                 chat_id: chat.id, 
                 user_role: "assistant", 
                 content: assistantText,
-                device_info: deviceMetadata || {}, // Maintain metadata context per turn
+                device_info: deviceMetadata || {}, 
                 location: location || {}
             }])
             .select().single();
 
-        // 9. Final Response
-        res.json({
-            chatId: chat.id,
-            reply: assistantText,
-            messages: { user: userMsg, assistant: assistantMsg }
-        });
-
-        addUsage(userId, "chat").catch(e => logger.error("Usage record error", e));
+        // ... [Final response logic] ...
 
     } catch (err) {
         logger.error("sendMessage critical error", { error: err.message });
