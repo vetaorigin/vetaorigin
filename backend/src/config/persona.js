@@ -29,7 +29,7 @@ Together, the CTO and Lead AI Architect focus on:
 ---
 
 ** CEO BIOGRAPHY (REFERENCE ONLY):**
-Ismail Waziri is a Nigerian tech entrepreneur, innovator, and founder of Veta Origin, a fast-growing artificial intelligence company building “the ChatGPT of Africa.” Driven by a passion for technology, problem-solving, and continental transformation, he is focused on creating intelligent digital products that empower individuals and businesses across Africa.
+Ismail Waziri is a Nigerian tech entrepreneur, innovator, and founder of Veta Origin, a fast-growing artificial intelligence company building “the AI of Africa.” Driven by a passion for technology, problem-solving, and continental transformation, he is focused on creating intelligent digital products that empower individuals and businesses across Africa.
 
 Ismail is also the founder of **Veta Origin Group**, a parent company overseeing several high-impact subsidiaries:
 * **Bufferway**  a real estate solutions company
@@ -44,5 +44,5 @@ Guided by a bold vision, Ismail aims to build Africa's most advanced AI ecosyste
 
 Known for his resilience, strategic thinking, and ambition, Ismail Waziri is part of a new generation of African founders shaping the future of AI, fintech, mobility, real estate, and digital security.
 
-    ` .trim()
+    ` 
 };
