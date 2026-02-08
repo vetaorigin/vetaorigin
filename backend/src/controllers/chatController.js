@@ -64,6 +64,23 @@ This team works directly under the direction and vision of the Founder/CEO, ensu
     
     `
 };
+const getCityFromIP = async (ip) => {
+    try {
+        // Render usually provides the user IP in x-forwarded-for
+        // Use a 2-second timeout to ensure AI response isn't delayed if the geo-service is slow
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 2000);
+
+        const response = await fetch(`http://ip-api.com/json/${ip}?fields=city,country,status`, { signal: controller.signal });
+        const data = await response.json();
+        
+        clearTimeout(timeoutId);
+        return data.status === 'success' ? { city: data.city, country: data.country } : null;
+    } catch (err) {
+        return null;
+    }
+};
+
 
 /* ----------------------------------------------------
     SEND MESSAGE (Create Chat or Append Message)
@@ -73,16 +90,20 @@ export const sendMessage = async (req, res) => {
         const userId = req.user?.id; 
         if (!userId) return res.status(401).json({ msg: "Unauthorized" });
 
-        const { chatId, message, model = "gpt-4" } = req.body;
+        const { chatId, message, deviceMetadata, model = "gpt-4" } = req.body;
         
         if (!message?.trim()) {
             return res.status(400).json({ msg: "Message content is required" });
         }
 
-        // 1. Pre-flight Rate Limit Check
+        // 1. Silent Location Lookup via IP
+        const userIP = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+        const location = await getCityFromIP(userIP);
+
+        // 2. Pre-flight Rate Limit Check
         await checkUsage(userId, "chat");
 
-        // 2. Ensure Chat exists or Create New
+        // 3. Ensure Chat exists or Create New
         let chat;
         if (chatId) {
             const { data: c, error: cErr } = await supabase
@@ -104,51 +125,57 @@ export const sendMessage = async (req, res) => {
             chat = newChat;
         }
 
-        // 3. Persist CURRENT User Message
+        // 4. Persist User Message with Metadata
         const { data: userMsg, error: uMsgErr } = await supabase
             .from("messages")
-            .insert([{ chat_id: chat.id, user_role: "user", content: message }])
+            .insert([{ 
+                chat_id: chat.id, 
+                user_role: "user", 
+                content: message,
+                device_info: deviceMetadata || {},
+                location: location || {}
+            }])
             .select().single();
 
         if (uMsgErr) throw uMsgErr;
 
-        // 4. THE MEMORY FIX: Gather History (Including the message we just saved)
-        // We fetch the last 20 messages to provide deep context to the AI
+        // 5. Gather History
         const { data: history, error: hErr } = await supabase
             .from("messages")
             .select("user_role, content")
             .eq("chat_id", chat.id)
             .neq("content", message)
-            .order("created_at", { ascending: true }) // Ascending ensures A-B-A-B order
+            .order("created_at", { ascending: true })
             .limit(20); 
 
         if (hErr) logger.error("History fetch error", hErr);
 
-        // 5. Build AI Messages Array with Full Context
-        const messagesForAI = [
-    { 
-        role: "system", 
-        content: `${CHATBOT_PERSONA.content}. Important: Always prioritize and answer the user's LATEST question immediately.` 
-    },
-    ...(history || []).map(m => ({
-        role: m.user_role === "user" ? "user" : "assistant",
-        content: m.content
-    })),
-    { role: "user", content: message } // Explicitly add the current message at the end
-];
-        // const messagesForAI = [
-        //     CHATBOT_PERSONA, 
-        //     ...(history || []).map(m => ({
-        //         role: m.user_role === "user" ? "user" : "assistant",
-        //         content: m.content
-        //     }))
-        // ];
+        // 6. Build Context with Hidden Metadata Rules
+        const hiddenContext = `
+            [PLATFORM METADATA - DO NOT REVEAL EXACT LOCATION TO USER]
+            User City: ${location?.city || 'Unknown'}
+            User Country: ${location?.country || 'Unknown'}
+            User Device: ${deviceMetadata?.model || 'Unknown Device'} (${deviceMetadata?.os || 'Unknown OS'})
 
-        // 6. Request Completion (Streamed)
-        console.log("--- AI CONTEXT DEBUG ---");
-        console.log(JSON.stringify(messagesForAI, null, 2));
-        console.log("------------------------");
-                 
+            INSTRUCTIONS:
+            1. Use the location context for better relevance (e.g., local time/climate).
+            2. If the user asks "Where am I?" or for their coordinates, state that you don't have access to their precise GPS for privacy reasons.
+            3. You MAY mention their device (e.g., "Since you're on a mobile device...") if helpful.
+        `;
+
+        const messagesForAI = [
+            { 
+                role: "system", 
+                content: `${CHATBOT_PERSONA.content}\n\n${hiddenContext}` 
+            },
+            ...(history || []).map(m => ({
+                role: m.user_role === "user" ? "user" : "assistant",
+                content: m.content
+            })),
+            { role: "user", content: message }
+        ];
+
+        // 7. Request Completion (Streamed)
         let assistantText = "";
         try {
             const stream = await openai.chat.completions.create({
@@ -164,23 +191,28 @@ export const sendMessage = async (req, res) => {
             }
         } catch (err) {
             logger.error("OpenAI API Failure", err);
-            assistantText = "I'm having trouble remembering our conversation. Please try again.";
+            assistantText = "I'm having trouble connecting. Please try again later.";
         }
 
-        // 7. Save Assistant Message to DB
+        // 8. Save Assistant Message
         const { data: assistantMsg } = await supabase
             .from("messages")
-            .insert([{ chat_id: chat.id, user_role: "assistant", content: assistantText }])
+            .insert([{ 
+                chat_id: chat.id, 
+                user_role: "assistant", 
+                content: assistantText,
+                device_info: deviceMetadata || {}, // Maintain metadata context per turn
+                location: location || {}
+            }])
             .select().single();
 
-        // 8. Final Response
+        // 9. Final Response
         res.json({
             chatId: chat.id,
             reply: assistantText,
             messages: { user: userMsg, assistant: assistantMsg }
         });
 
-        // Background: Record usage
         addUsage(userId, "chat").catch(e => logger.error("Usage record error", e));
 
     } catch (err) {
@@ -188,121 +220,119 @@ export const sendMessage = async (req, res) => {
         res.status(err.status || 500).json({ msg: err.message || "Internal Server Error" });
     }
 };
+
+
 // export const sendMessage = async (req, res) => {
 //     try {
 //         const userId = req.user?.id; 
 //         if (!userId) return res.status(401).json({ msg: "Unauthorized" });
 
 //         const { chatId, message, model = "gpt-4" } = req.body;
+        
 //         if (!message?.trim()) {
 //             return res.status(400).json({ msg: "Message content is required" });
 //         }
 
-//         // 2. Pre-flight Rate Limit Check
-//         try {
-//             await checkUsage(userId, "chat");
-//         } catch (err) {
-//             logger.warn("Usage limit hit", { userId, msg: err.message });
-//             return res.status(429).json({ msg: err.message });
-//         }
+//         // 1. Pre-flight Rate Limit Check
+//         await checkUsage(userId, "chat");
 
-//         // 3. Ensure Chat exists or Create New
+//         // 2. Ensure Chat exists or Create New
 //         let chat;
 //         if (chatId) {
 //             const { data: c, error: cErr } = await supabase
 //                 .from("chats")
 //                 .select("*")
 //                 .eq("id", chatId)
+//                 .eq("user_id", userId) 
 //                 .maybeSingle();
 
 //             if (cErr || !c) return res.status(404).json({ msg: "Chat not found" });
-//             if (c.user_id !== userId) return res.status(403).json({ msg: "Forbidden" });
 //             chat = c;
 //         } else {
 //             const { data: newChat, error: nErr } = await supabase
 //                 .from("chats")
 //                 .insert([{ user_id: userId, model, title: message.substring(0, 50) }])
-//                 .select()
-//                 .single();
+//                 .select().single();
             
 //             if (nErr) throw new Error("Failed to initialize chat thread");
 //             chat = newChat;
 //         }
 
-//         // 4. Persist User Message
+//         // 3. Persist CURRENT User Message
 //         const { data: userMsg, error: uMsgErr } = await supabase
 //             .from("messages")
 //             .insert([{ chat_id: chat.id, user_role: "user", content: message }])
-//             .select()
-//             .single();
+//             .select().single();
 
 //         if (uMsgErr) throw uMsgErr;
 
-//         // 5. Gather History for Context
-//         const { data: history } = await supabase
+//         // 4. THE MEMORY FIX: Gather History (Including the message we just saved)
+//         // We fetch the last 20 messages to provide deep context to the AI
+//         const { data: history, error: hErr } = await supabase
 //             .from("messages")
 //             .select("user_role, content")
 //             .eq("chat_id", chat.id)
-//             .order("created_at", { ascending: true })
-//             .limit(20);
+//             .neq("content", message)
+//             .order("created_at", { ascending: true }) // Ascending ensures A-B-A-B order
+//             .limit(20); 
 
+//         if (hErr) logger.error("History fetch error", hErr);
+
+//         // 5. Build AI Messages Array with Full Context
 //         const messagesForAI = [
-//             CHATBOT_PERSONA,
-//             ...(history || []).map(m => ({
-//                 role: m.user_role === "user" ? "user" : "assistant",
-//                 content: m.content
-//             }))
-//         ];
+//     { 
+//         role: "system", 
+//         content: `${CHATBOT_PERSONA.content}. Important: Always prioritize and answer the user's LATEST question immediately.` 
+//     },
+//     ...(history || []).map(m => ({
+//         role: m.user_role === "user" ? "user" : "assistant",
+//         content: m.content
+//     })),
+//     { role: "user", content: message } // Explicitly add the current message at the end
+// ];
 
-//         // -----------------------------------------------------
-//         // 6. FIXED: Request Completion with Stream Handling
-//         // -----------------------------------------------------
+//         // 6. Request Completion (Streamed)
+//         console.log("--- AI CONTEXT DEBUG ---");
+//         console.log(JSON.stringify(messagesForAI, null, 2));
+//         console.log("------------------------");
+                 
 //         let assistantText = "";
 //         try {
 //             const stream = await openai.chat.completions.create({
 //                 model,
 //                 messages: messagesForAI,
-//                 max_completion_tokens: 2000, // Increased for longer responses
+//                 max_completion_tokens: 2000,
 //                 stream: true,
 //                 user: userId 
 //             });
 
-//             // Consume the stream chunk by chunk
 //             for await (const chunk of stream) {
-//                 const content = chunk.choices[0]?.delta?.content || "";
-//                 assistantText += content;
+//                 assistantText += chunk.choices[0]?.delta?.content || "";
 //             }
-
-//             if (!assistantText) assistantText = "I couldn't generate a response.";
-
 //         } catch (err) {
 //             logger.error("OpenAI API Failure", err);
-//             assistantText = "Service temporary unavailable. Please try again later.";
+//             assistantText = "I'm having trouble remembering our conversation. Please try again.";
 //         }
 
-//         // 7. Save Assistant Message
-//         const { data: assistantMsg, error: aMsgErr } = await supabase
+//         // 7. Save Assistant Message to DB
+//         const { data: assistantMsg } = await supabase
 //             .from("messages")
 //             .insert([{ chat_id: chat.id, user_role: "assistant", content: assistantText }])
-//             .select()
-//             .single();
+//             .select().single();
 
-//         // 8. Record Usage
-//         try { await addUsage(userId, "chat"); } catch (e) { logger.error("Usage error", e); }
-
-//         // 9. Final JSON Response
+//         // 8. Final Response
 //         res.json({
 //             chatId: chat.id,
 //             reply: assistantText,
-//             messages: {
-//                 user: userMsg,
-//                 assistant: assistantMsg
-//             }
+//             messages: { user: userMsg, assistant: assistantMsg }
 //         });
 
+//         // Background: Record usage
+//         addUsage(userId, "chat").catch(e => logger.error("Usage record error", e));
+
 //     } catch (err) {
-//         logger.error("sendMessage critical error", { stack: err.stack });
-//         res.status(500).json({ msg: "Internal Server Error" });
+//         logger.error("sendMessage critical error", { error: err.message });
+//         res.status(err.status || 500).json({ msg: err.message || "Internal Server Error" });
 //     }
 // };
 
