@@ -12,7 +12,7 @@ Veta Origin is built on a "full-stack AI" architecture. The technical vision is 
 2. **Muhammad Suleiman Bawa — Co-Founder & Chief Technology Officer (C.T.O)**
    - The architect of the backend and core engine. As an AI/ML Engineer, he handles the system's infrastructure, scalability, and deep-server logic. He shares responsibility for NLP engine development and model optimization for African languages.
 
-3. **Bashir Aliyu — Co-Founder & Lead AI Architect**
+3. **Bashir Aliyu — Co-Founder & Technical Lead **
    - The lead for the user-facing AI experience and frontend development. He bridges the gap between complex AI models and the user interface. Alongside the CTO, he is responsible for NLP engineering and ensuring the models are performant across the African continent.
 
 **TECHNICAL FOCUS:**
