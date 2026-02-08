@@ -92,44 +92,61 @@ export const sendMessage = async (req, res) => {
 
         const { chatId, message, deviceMetadata, model = "gpt-4" } = req.body;
         
-        // --- 1. THE IP FIX ---
-        // Render passes the real IP as a string, sometimes with multiple IPs.
-        // We take the first one and trim it.
+        // 1. Metadata Lookups
         const rawIP = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
         const userIP = rawIP.split(',')[0].trim();
-        
-        // 2. Location Lookup (Silent)
         const location = await getCityFromIP(userIP);
 
-        // --- DEBUG LOGS (Check these in Render Dashboard) ---
-        console.log(`DEBUG: Testing IP: ${userIP}`);
-        console.log(`DEBUG: Device Received: ${JSON.stringify(deviceMetadata)}`);
-        console.log(`DEBUG: Location Found: ${JSON.stringify(location)}`);
+        if (!message?.trim()) {
+            return res.status(400).json({ msg: "Message content is required" });
+        }
 
-        // ... [Rest of your Rate Limit and Chat Creation logic] ...
+        // 2. Pre-flight Rate Limit
+        await checkUsage(userId, "chat");
 
-        // --- 4. PERSIST WITH JSONB FIX ---
-        // Ensure we explicitly pass the objects, defaulting to an empty object if null
+        // 3. Define Chat (The Variable must be accessible to the whole function)
+        let chat; 
+
+        if (chatId) {
+            const { data: existingChat, error: cErr } = await supabase
+                .from("chats")
+                .select("*")
+                .eq("id", chatId)
+                .eq("user_id", userId) 
+                .maybeSingle();
+
+            if (cErr || !existingChat) return res.status(404).json({ msg: "Chat not found" });
+            chat = existingChat;
+        } else {
+            const { data: newChat, error: nErr } = await supabase
+                .from("chats")
+                .insert([{ user_id: userId, model, title: message.substring(0, 50) }])
+                .select().single();
+            
+            if (nErr) throw new Error("Failed to initialize chat thread");
+            chat = newChat;
+        }
+
+        // --- AT THIS POINT, 'chat' IS GUARANTEED TO BE DEFINED ---
+
+        // 4. Save User Message
         const { data: userMsg, error: uMsgErr } = await supabase
             .from("messages")
             .insert([{ 
-                chat_id: chat.id, 
+                chat_id: chat.id, // Now 'chat' is defined
                 user_role: "user", 
                 content: message,
-                device_info: deviceMetadata || {}, // Must be an object for JSONB
-                location: location || {}           // Must be an object for JSONB
+                device_info: deviceMetadata || {},
+                location: location || {}
             }])
             .select().single();
 
-        if (uMsgErr) {
-            console.error("Supabase User Msg Insert Error:", uMsgErr);
-            throw uMsgErr;
-        }
+        if (uMsgErr) throw uMsgErr;
 
-        // ... [History gathering and OpenAI streaming logic] ...
+        // ... [History and OpenAI Logic] ...
 
-        // --- 8. SAVE ASSISTANT MESSAGE ---
-        const { data: assistantMsg } = await supabase
+        // 7. Save Assistant Message
+        const { data: assistantMsg, error: aMsgErr } = await supabase
             .from("messages")
             .insert([{ 
                 chat_id: chat.id, 
@@ -139,12 +156,20 @@ export const sendMessage = async (req, res) => {
                 location: location || {}
             }])
             .select().single();
+            
+        if (aMsgErr) throw aMsgErr;
 
-        // ... [Final response logic] ...
+        // 8. Final Response
+        res.json({
+            chatId: chat.id,
+            reply: assistantText,
+            messages: { user: userMsg, assistant: assistantMsg }
+        });
 
     } catch (err) {
-        logger.error("sendMessage critical error", { error: err.message });
-        res.status(err.status || 500).json({ msg: err.message || "Internal Server Error" });
+        // Updated error logger to give more detail
+        console.error("Critical Error:", err.message);
+        res.status(500).json({ msg: err.message || "Internal Server Error" });
     }
 };
 
