@@ -118,6 +118,7 @@ export const sendMessage = async (req, res) => {
             .from("messages")
             .select("user_role, content")
             .eq("chat_id", chat.id)
+            .neq("content", message)
             .order("created_at", { ascending: true }) // Ascending ensures A-B-A-B order
             .limit(20); 
 
@@ -125,12 +126,23 @@ export const sendMessage = async (req, res) => {
 
         // 5. Build AI Messages Array with Full Context
         const messagesForAI = [
-            CHATBOT_PERSONA, 
-            ...(history || []).map(m => ({
-                role: m.user_role === "user" ? "user" : "assistant",
-                content: m.content
-            }))
-        ];
+    { 
+        role: "system", 
+        content: `${CHATBOT_PERSONA.content}. Important: Always prioritize and answer the user's LATEST question immediately.` 
+    },
+    ...(history || []).map(m => ({
+        role: m.user_role === "user" ? "user" : "assistant",
+        content: m.content
+    })),
+    { role: "user", content: message } // Explicitly add the current message at the end
+];
+        // const messagesForAI = [
+        //     CHATBOT_PERSONA, 
+        //     ...(history || []).map(m => ({
+        //         role: m.user_role === "user" ? "user" : "assistant",
+        //         content: m.content
+        //     }))
+        // ];
 
         // 6. Request Completion (Streamed)
         let assistantText = "";
