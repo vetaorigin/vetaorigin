@@ -145,6 +145,10 @@ export const sendMessage = async (req, res) => {
         // ];
 
         // 6. Request Completion (Streamed)
+        console.log("--- AI CONTEXT DEBUG ---");
+        console.log(JSON.stringify(messagesForAI, null, 2));
+        console.log("------------------------");
+                 
         let assistantText = "";
         try {
             const stream = await openai.chat.completions.create({
