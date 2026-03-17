@@ -18,53 +18,56 @@ export async function checkUsage(userId, mode) {
         const now = new Date();
         const today = now.toISOString().split('T')[0];
 
-        // 1. Fetch Subscription + Plan limits
+        // 1. Fetch Subscription ONLY (No Join)
         const { data: sub, error: subError } = await supabase
             .from("subscriptions")
-            .select(`
-                expires_at,
-                plans ( 
-                    name,
-                    chat_limit,
-                    tts_limit,
-                    stt_limit,
-                    s2s_limit
-                )
-            `)
+            .select("plan_id, expires_at")
             .eq("user_id", userId)
-            .gt("expires_at", now.toISOString()) // Only get ACTIVE subscriptions
+            .gt("expires_at", now.toISOString())
             .maybeSingle();
 
         if (subError) {
-            logger.error("Subscription fetch failed", subError);
-            throw new Error("Unable to verify subscription");
+            console.error("DEBUG: Sub Fetch Error:", subError);
+            throw new Error("Subscription check failed at DB level");
         }
 
-        let plan = sub?.plans;
+        // 2. Determine which plan to use
+        let plan;
+        if (sub && sub.plan_id) {
+            // Get the paid plan
+            const { data: paidPlan } = await supabase
+                .from("plans")
+                .select("*")
+                .eq("id", sub.plan_id)
+                .single();
+            plan = paidPlan;
+        } 
 
-        // 2. ROLLBACK LOGIC: If no active sub found, manually fetch the 'Free' plan from DB
+        // ROLLBACK: If no paid plan found, get the Free plan
         if (!plan) {
-            const { data: freePlan } = await supabase
+            const { data: freePlan, error: freeErr } = await supabase
                 .from("plans")
                 .select("*")
                 .eq("name", "Free")
                 .single();
             
+            if (freeErr) {
+                console.error("DEBUG: Free Plan Missing:", freeErr);
+                throw new Error("System Error: Free plan not found in database.");
+            }
             plan = freePlan;
-            logger.info(`Using Free tier limits for user: ${userId}`);
         }
 
-        // Use the limits from the plan, defaulting to 30 as you requested
+        // 3. Set the limits (Defaulting to 30 as per your new rules)
         const limits = {
             chat: plan?.chat_limit ?? 30,
             tts: plan?.tts_limit ?? 30,
             stt: plan?.stt_limit ?? 30,
             s2s: plan?.s2s_limit ?? 30
         };
-
         const limit = limits[mode];
 
-        // 3. Fetch current usage
+        // 4. Check Usage
         const { data: usageData, error: usageError } = await supabase
             .from("usage")
             .select("used, updated_at")
@@ -72,23 +75,23 @@ export async function checkUsage(userId, mode) {
             .eq("type", mode)
             .maybeSingle();
 
-        if (usageError) throw new Error("Unable to fetch usage count");
+        if (usageError) throw new Error("Usage fetch failed");
 
         let used = 0;
-        if (usageData) {
+        if (usageData && usageData.updated_at) {
             const lastUpdate = new Date(usageData.updated_at).toISOString().split('T')[0];
-            // If the record is from a previous day, current usage is 0 (Daily Reset)
             used = (lastUpdate === today) ? usageData.used : 0;
         }
 
         if ((used + 1) > limit) {
-            throw new Error(`Daily ${mode} limit reached (${limit}) for your ${plan?.name || 'free'} plan.`);
+            throw new Error(`Limit reached: ${limit} daily messages for ${plan.name} plan.`);
         }
 
         return true;
     } catch (err) {
-        logger.error("checkUsage error", err);
-        throw err;
+        logger.error("checkUsage critical failure", err);
+        // This re-throws the error so the controller can catch it
+        throw err; 
     }
 }
 
