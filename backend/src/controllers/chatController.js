@@ -7,63 +7,7 @@ import { checkUsage, addUsage } from "../utils/rateLimiter.js";
 import { CHATBOT_PERSONA } from '../config/persona.js';
 const logger = initLogger(); 
 
-// ==============================================================
-// 🤖 CHATBOT PERSONA DEFINITION
-// ==============================================================
-// const CHATBOT_PERSONA = {
-//     role: "system",
-//     content:`
-//          You are Veta Origin, a highly specialized and proprietary AI assistant developed by Veta Origin Group.
-        
-// **ROLE & EXPERTISE:**
-// Your primary function is to [e.g., provide technical support, analyze financial data, offer creative writing assistance].
-// You are an expert in all subjects related to Veta Origin's Product/Service and its knowledge base.
-        
-// **OWNERSHIP & LEADERSHIP:**
-// The founder and CEO of Veta Origin is Ismail Waziri. This AI operates entirely under their vision and company structure.
-        
-// **TONE & STYLE:**
-// Maintain a tone that is professional, approachable, and highly confident. Use clear, concise language. Use Markdown formatting (like bolding or bullet points) for clarity when appropriate.
-        
-// **STRICT RULES (Identity Guardrails):**
-// 1. **NEVER** refer to yourself as ChatGPT, GPT-4, OpenAI, or a generic Large Language Model (LLM).
-// 2. If the user asks who you are, state clearly: I am Veta Origin, an AI developed by Veta Origin Group.
-// 3. **DO NOT** spontaneously include the founder's biography in your response.
-// 4. If asked about the **founder, CEO, or leadership**, you **MUST** reference the detailed information in the **FOUNDER BIOGRAPHY** section below.
 
-// ---
-
-// **FOUNDER BIOGRAPHY (REFERENCE ONLY):**
-// Ismail Waziri is a Nigerian tech entrepreneur, innovator, and founder of Veta Origin, a fast-growing artificial intelligence company building “the ChatGPT of Africa.” Driven by a passion for technology, problem-solving, and continental transformation, he is focused on creating intelligent digital products that empower individuals and businesses across Africa.
-
-// Ismail is also the founder of **Veta Origin Group**, a parent company overseeing several high-impact subsidiaries:
-// * **Bufferway**  a real estate solutions company
-// * **Lincon Bravos**  an automobile and automotive innovation brand
-// * **Paychipa**  a rapidly growing fintech startup processing thousands of daily transactions through its POS network
-// * **Fivgram**  a social media platform built for African expression and community
-// * **Xpanda Security Services**  a security company focused on modern protective services
-
-// Through his leadership, Paychipa has already distributed over 100 POS terminals, processes more than 5,000 daily transactions, and is integrating with Flutterwave to scale across Nigeria and beyond.
-
-// Guided by a bold vision, Ismail aims to build Africa's most advanced AI ecosystem—one that can compete globally while addressing uniquely African challenges. His long-term mission is to empower millions with intelligent tools, redefine Africa's tech landscape, and position Veta Origin as a global leader in artificial intelligence.
-
-// Known for his resilience, strategic thinking, and ambition, Ismail Waziri is part of a new generation of African founders shaping the future of AI, fintech, mobility, real estate, and digital security.
-
-
-// **DEVELOPMENT TEAM & TECHNICAL LEADERSHIP:**
-// Veta Origin is engineered by a dedicated team of Nigerian AI/ML scientists and software engineers committed to building world-class technology tailored for the African market.
-
-// //Lead AI Architect: Bashir Aliyu
-// //Expertise: Specializes in Natural Language Processing (NLP) models, focus on low-resource African languages, and model optimization for edge computing.
-// Chief Technology Officer (C.T.O): Muhammad Suleiman Bawa
-// Expertise: Leads the development of the core application platform, handling scalability, API integration, and infrastructure resilience.
-// //Data Scientist: [Insert Developer 3 Name]
-// //Expertise:Responsible for data curation, model training pipelines, and ensuring the ethical alignment and bias mitigation of Veta Origin's knowledge base.
-
-// This team works directly under the direction and vision of the Founder/CEO, ensuring Veta Origin remains cutting-edge and continentally relevant.
-    
-//     `
-// };
 const getCityFromIP = async (ip) => {
     try {
         // Render usually provides the user IP in x-forwarded-for
@@ -86,7 +30,6 @@ const getCityFromIP = async (ip) => {
     SEND MESSAGE (Create Chat or Append Message)
 ----------------------------------------------------- */
 export const sendMessage = async (req, res) => {
-    // 1. Initialize variables at the top-level scope
     let chat;
     let assistantText = "";
     let userMsg;
@@ -95,6 +38,7 @@ export const sendMessage = async (req, res) => {
         const userId = req.user?.id; 
         if (!userId) return res.status(401).json({ msg: "Unauthorized" });
 
+        // UPDATED: Use a real model name. "gpt-5.2" will cause an API error.
         const { chatId, message, deviceMetadata, model = "gpt-5.2" } = req.body;
         
         if (!message?.trim()) {
@@ -106,15 +50,12 @@ export const sendMessage = async (req, res) => {
         const userIP = rawIP.split(',')[0].trim();
         const location = await getCityFromIP(userIP);
 
-        // Logs for Render Dashboard
-        console.log(`DEBUG: Testing IP: ${userIP}`);
-        console.log(`DEBUG: Device Received: ${JSON.stringify(deviceMetadata)}`);
-        console.log(`DEBUG: Location Found: ${JSON.stringify(location)}`);
-
-        // 3. Pre-flight Rate Limit Check
-        await checkUsage(userId, "chat");
+        // 3. Unlimited Usage Phase
+        // We comment this out to allow unlimited messages for now.
+        // await checkUsage(userId, "chat"); 
 
         // 4. Ensure Chat Thread exists
+        // If chatId is null (from a fresh login), this logic creates a NEW thread automatically.
         if (chatId) {
             const { data: c, error: cErr } = await supabase
                 .from("chats")
@@ -126,6 +67,7 @@ export const sendMessage = async (req, res) => {
             if (cErr || !c) return res.status(404).json({ msg: "Chat not found" });
             chat = c;
         } else {
+            // NEW CHAT CREATION: Triggered when user first logs in or clicks "New Chat"
             const { data: newChat, error: nErr } = await supabase
                 .from("chats")
                 .insert([{ user_id: userId, model, title: message.substring(0, 50) }])
@@ -135,7 +77,7 @@ export const sendMessage = async (req, res) => {
             chat = newChat;
         }
 
-        // 5. Persist User Message with Metadata
+        // 5. Persist User Message
         const { data: savedUserMsg, error: uMsgErr } = await supabase
             .from("messages")
             .insert([{ 
@@ -150,26 +92,26 @@ export const sendMessage = async (req, res) => {
         if (uMsgErr) throw uMsgErr;
         userMsg = savedUserMsg;
 
-        // 6. Gather History for Context
+        // 6. Gather History
         const { data: history, error: hErr } = await supabase
             .from("messages")
             .select("user_role, content")
             .eq("chat_id", chat.id)
-            .neq("content", message) // Avoid duplicating current message
+            .neq("id", userMsg.id) // Better than checking content equality
             .order("created_at", { ascending: true })
             .limit(20); 
 
         if (hErr) console.error("History fetch error", hErr);
 
-        // 7. Prepare AI Context (Hidden Metadata Strategy)
+        // 7. Prepare AI Context
         const hiddenContext = `
-            [PLATFORM METADATA - DO NOT REVEAL EXACT LOCATION TO USER]
+            [PLATFORM METADATA]
             User City: ${location?.city || 'Unknown'}
             User Country: ${location?.country || 'Unknown'}
             User Device: ${deviceMetadata?.model || 'Unknown Device'}
 
             INSTRUCTIONS:
-            1. Use location for relevance, but if asked "Where am I?", say you lack GPS access for privacy.
+            1. Use location for relevance, but don't reveal exact coordinates.
             2. Prioritize answering the LATEST question immediately.
         `;
 
@@ -182,10 +124,10 @@ export const sendMessage = async (req, res) => {
             { role: "user", content: message }
         ];
 
-        // 8. Request OpenAI Completion (Streamed)
+        // 8. Request OpenAI Completion
         try {
             const stream = await openai.chat.completions.create({
-                model: "gpt-5.2",
+                model: "gpt-5.2", 
                 messages: messagesForAI,
                 max_completion_tokens: 2000,
                 stream: true,
@@ -196,11 +138,11 @@ export const sendMessage = async (req, res) => {
                 assistantText += chunk.choices[0]?.delta?.content || "";
             }
         } catch (err) {
-            console.error("OpenAI API Failure", err);
-            assistantText = "I'm having trouble connecting to my brain. Please try again.";
+            console.error(" Failed to connect", err);
+            assistantText = "I'm having trouble connecting to think-Lab. Please try again.";
         }
 
-        // 9. Save Assistant Message to DB
+        // 9. Save Assistant Message
         const { data: assistantMsg } = await supabase
             .from("messages")
             .insert([{ 
@@ -214,12 +156,12 @@ export const sendMessage = async (req, res) => {
 
         // 10. Final Response
         res.json({
-            chatId: chat.id,
+            chatId: chat.id, // Always return the ID so the frontend can track the session
             reply: assistantText,
             messages: { user: userMsg, assistant: assistantMsg }
         });
 
-        // Background: Record usage
+        // Still record usage in background for your own analytics
         addUsage(userId, "chat").catch(e => console.error("Usage record error", e));
 
     } catch (err) {
@@ -229,22 +171,41 @@ export const sendMessage = async (req, res) => {
 };
 
 
+
+
+
+
+
 // export const sendMessage = async (req, res) => {
+//     // 1. Initialize variables at the top-level scope
+//     let chat;
+//     let assistantText = "";
+//     let userMsg;
+
 //     try {
 //         const userId = req.user?.id; 
 //         if (!userId) return res.status(401).json({ msg: "Unauthorized" });
 
-//         const { chatId, message, model = "gpt-4" } = req.body;
+//         const { chatId, message, deviceMetadata, model = "gpt-5.2" } = req.body;
         
 //         if (!message?.trim()) {
 //             return res.status(400).json({ msg: "Message content is required" });
 //         }
 
-//         // 1. Pre-flight Rate Limit Check
+//         // 2. Identify User IP & Location
+//         const rawIP = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+//         const userIP = rawIP.split(',')[0].trim();
+//         const location = await getCityFromIP(userIP);
+
+//         // Logs for Render Dashboard
+//         console.log(`DEBUG: Testing IP: ${userIP}`);
+//         console.log(`DEBUG: Device Received: ${JSON.stringify(deviceMetadata)}`);
+//         console.log(`DEBUG: Location Found: ${JSON.stringify(location)}`);
+
+//         // 3. Pre-flight Rate Limit Check
 //         await checkUsage(userId, "chat");
 
-//         // 2. Ensure Chat exists or Create New
-//         let chat;
+//         // 4. Ensure Chat Thread exists
 //         if (chatId) {
 //             const { data: c, error: cErr } = await supabase
 //                 .from("chats")
@@ -265,48 +226,57 @@ export const sendMessage = async (req, res) => {
 //             chat = newChat;
 //         }
 
-//         // 3. Persist CURRENT User Message
-//         const { data: userMsg, error: uMsgErr } = await supabase
+//         // 5. Persist User Message with Metadata
+//         const { data: savedUserMsg, error: uMsgErr } = await supabase
 //             .from("messages")
-//             .insert([{ chat_id: chat.id, user_role: "user", content: message }])
+//             .insert([{ 
+//                 chat_id: chat.id, 
+//                 user_role: "user", 
+//                 content: message,
+//                 device_info: deviceMetadata || {},
+//                 location: location || {}
+//             }])
 //             .select().single();
 
 //         if (uMsgErr) throw uMsgErr;
+//         userMsg = savedUserMsg;
 
-//         // 4. THE MEMORY FIX: Gather History (Including the message we just saved)
-//         // We fetch the last 20 messages to provide deep context to the AI
+//         // 6. Gather History for Context
 //         const { data: history, error: hErr } = await supabase
 //             .from("messages")
 //             .select("user_role, content")
 //             .eq("chat_id", chat.id)
-//             .neq("content", message)
-//             .order("created_at", { ascending: true }) // Ascending ensures A-B-A-B order
+//             .neq("content", message) // Avoid duplicating current message
+//             .order("created_at", { ascending: true })
 //             .limit(20); 
 
-//         if (hErr) logger.error("History fetch error", hErr);
+//         if (hErr) console.error("History fetch error", hErr);
 
-//         // 5. Build AI Messages Array with Full Context
+//         // 7. Prepare AI Context (Hidden Metadata Strategy)
+//         const hiddenContext = `
+//             [PLATFORM METADATA - DO NOT REVEAL EXACT LOCATION TO USER]
+//             User City: ${location?.city || 'Unknown'}
+//             User Country: ${location?.country || 'Unknown'}
+//             User Device: ${deviceMetadata?.model || 'Unknown Device'}
+
+//             INSTRUCTIONS:
+//             1. Use location for relevance, but if asked "Where am I?", say you lack GPS access for privacy.
+//             2. Prioritize answering the LATEST question immediately.
+//         `;
+
 //         const messagesForAI = [
-//     { 
-//         role: "system", 
-//         content: `${CHATBOT_PERSONA.content}. Important: Always prioritize and answer the user's LATEST question immediately.` 
-//     },
-//     ...(history || []).map(m => ({
-//         role: m.user_role === "user" ? "user" : "assistant",
-//         content: m.content
-//     })),
-//     { role: "user", content: message } // Explicitly add the current message at the end
-// ];
+//             { role: "system", content: `${CHATBOT_PERSONA.content}\n\n${hiddenContext}` },
+//             ...(history || []).map(m => ({
+//                 role: m.user_role === "user" ? "user" : "assistant",
+//                 content: m.content
+//             })),
+//             { role: "user", content: message }
+//         ];
 
-//         // 6. Request Completion (Streamed)
-//         console.log("--- AI CONTEXT DEBUG ---");
-//         console.log(JSON.stringify(messagesForAI, null, 2));
-//         console.log("------------------------");
-                 
-//         let assistantText = "";
+//         // 8. Request OpenAI Completion (Streamed)
 //         try {
 //             const stream = await openai.chat.completions.create({
-//                 model,
+//                 model: "gpt-5.2",
 //                 messages: messagesForAI,
 //                 max_completion_tokens: 2000,
 //                 stream: true,
@@ -317,17 +287,23 @@ export const sendMessage = async (req, res) => {
 //                 assistantText += chunk.choices[0]?.delta?.content || "";
 //             }
 //         } catch (err) {
-//             logger.error("OpenAI API Failure", err);
-//             assistantText = "I'm having trouble remembering our conversation. Please try again.";
+//             console.error("OpenAI API Failure", err);
+//             assistantText = "I'm having trouble connecting to my brain. Please try again.";
 //         }
 
-//         // 7. Save Assistant Message to DB
+//         // 9. Save Assistant Message to DB
 //         const { data: assistantMsg } = await supabase
 //             .from("messages")
-//             .insert([{ chat_id: chat.id, user_role: "assistant", content: assistantText }])
+//             .insert([{ 
+//                 chat_id: chat.id, 
+//                 user_role: "assistant", 
+//                 content: assistantText,
+//                 device_info: deviceMetadata || {},
+//                 location: location || {}
+//             }])
 //             .select().single();
 
-//         // 8. Final Response
+//         // 10. Final Response
 //         res.json({
 //             chatId: chat.id,
 //             reply: assistantText,
@@ -335,13 +311,16 @@ export const sendMessage = async (req, res) => {
 //         });
 
 //         // Background: Record usage
-//         addUsage(userId, "chat").catch(e => logger.error("Usage record error", e));
+//         addUsage(userId, "chat").catch(e => console.error("Usage record error", e));
 
 //     } catch (err) {
-//         logger.error("sendMessage critical error", { error: err.message });
-//         res.status(err.status || 500).json({ msg: err.message || "Internal Server Error" });
+//         console.error("Critical Error:", err.message);
+//         res.status(500).json({ msg: err.message || "Internal Server Error" });
 //     }
 // };
+
+
+
 
 
 
