@@ -57,7 +57,7 @@ export const sendMessage = async (req, res) => {
         console.log(`DEBUG: Location Found: ${JSON.stringify(location)}`);
 
         // 3. Pre-flight Rate Limit Check
-        await checkUsage(userId, "chat");
+        // await checkUsage(userId, "chat");
 
         // 4. Ensure Chat Thread exists
         if (chatId) {
