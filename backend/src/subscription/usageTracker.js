@@ -30,14 +30,38 @@ export const getUsage = async (userId, type) => {
 /**
  * Increment usage count
  */
+
 export const addUsage = async (userId, type, amount = 1) => {
   try {
     if (!VALID_TYPES.includes(type)) throw new Error(`Invalid usage type: ${type}`);
 
-    const current = await getUsage(userId, type);
-    const newUsed = current + amount;
+    // 1. Get the current record to check the date
+    const { data: currentRecord } = await supabaseAdmin
+      .from("usage")
+      .select("used, updated_at")
+      .eq("user_id", userId)
+      .eq("type", type)
+      .maybeSingle();
 
-    // ✅ Using Admin ensures the write is NEVER blocked by RLS
+    const now = new Date();
+    const today = now.toISOString().split('T')[0]; // Format: YYYY-MM-DD
+    
+    let newUsed = amount;
+
+    if (currentRecord && currentRecord.updated_at) {
+      const lastUpdateDate = new Date(currentRecord.updated_at).toISOString().split('T')[0];
+
+      if (lastUpdateDate === today) {
+        // Same day: Increment existing usage
+        newUsed = (currentRecord.used || 0) + amount;
+      } else {
+        // New day: Reset usage to 1 (or amount)
+        logger.info(`New day detected for ${userId}. Resetting ${type} usage.`);
+        newUsed = amount;
+      }
+    }
+
+    // 2. Perform the upsert
     const { data, error } = await supabaseAdmin
       .from("usage")
       .upsert(
@@ -45,16 +69,16 @@ export const addUsage = async (userId, type, amount = 1) => {
             user_id: userId, 
             type: type, 
             used: newUsed,
-            updated_at: new Date() 
+            updated_at: now
         },
-        { onConflict: "user_id,type" } // Matches your composite unique constraint
+        { onConflict: "user_id,type" } 
       )
       .select()
       .maybeSingle();
 
     if (error) throw error;
 
-    logger.info("Usage updated", { userId, type, used: newUsed });
+    logger.info("Daily usage updated", { userId, type, used: newUsed });
     return data;
   } catch (err) {
     logger.error("addUsage failed", err);
@@ -62,59 +86,26 @@ export const addUsage = async (userId, type, amount = 1) => {
   }
 };
 
-// subscription/usageTracker.js
-// import { supabase } from "../services/supabaseClient.js";
-// import { initLogger } from "../utils/logger.js";
 
-// const logger = initLogger();
 
-// /**
-//  * VALID USAGE TYPES
-//  */
-// const VALID_TYPES = ["chat", "tts", "stt", "s2s"];
-
-// /**
-//  * Fetch usage for a specific type
-//  */
-// export const getUsage = async (userId, type) => {
-//   try {
-//     if (!VALID_TYPES.includes(type)) throw new Error(`Invalid usage type: ${type}`);
-
-//     const column = `${type}_used`;
-
-//     const { data, error } = await supabase
-//       .from("usage")
-//       .select(column)
-//       .eq("user_id", userId)
-//       .maybeSingle();
-
-//     if (error) throw error;
-
-//     return data ? data[column] ?? 0 : 0;
-//   } catch (err) {
-//     logger.error("getUsage failed", err);
-//     throw err;
-//   }
-// };
-
-// /**
-//  * Increment usage count for a specific type
-//  */
 // export const addUsage = async (userId, type, amount = 1) => {
 //   try {
 //     if (!VALID_TYPES.includes(type)) throw new Error(`Invalid usage type: ${type}`);
 
-//     const column = `${type}_used`;
-
-//     // get current amount
 //     const current = await getUsage(userId, type);
 //     const newUsed = current + amount;
 
-//     const { data, error } = await supabase
+//     // ✅ Using Admin ensures the write is NEVER blocked by RLS
+//     const { data, error } = await supabaseAdmin
 //       .from("usage")
 //       .upsert(
-//         { user_id: userId, [column]: newUsed },
-//         { onConflict: "user_id" }
+//         { 
+//             user_id: userId, 
+//             type: type, 
+//             used: newUsed,
+//             updated_at: new Date() 
+//         },
+//         { onConflict: "user_id,type" } // Matches your composite unique constraint
 //       )
 //       .select()
 //       .maybeSingle();
@@ -129,26 +120,3 @@ export const addUsage = async (userId, type, amount = 1) => {
 //   }
 // };
 
-// /**
-//  * Reset all usage values (start of billing cycle)
-//  */
-// export const resetUsage = async (userId) => {
-//   try {
-//     const { error } = await supabase
-//       .from("usage")
-//       .update({
-//         chat_used: 0,
-//         tts_used: 0,
-//         stt_used: 0,
-//         s2s_used: 0
-//       })
-//       .eq("user_id", userId);
-
-//     if (error) throw error;
-
-//     logger.info("Usage reset", { userId });
-//   } catch (err) {
-//     logger.error("resetUsage failed", err);
-//     throw err;
-//   }
-// };
