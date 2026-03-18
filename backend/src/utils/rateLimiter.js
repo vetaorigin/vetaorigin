@@ -18,7 +18,8 @@ export async function checkUsage(userId, mode) {
         const now = new Date();
         const today = now.toISOString().split('T')[0];
 
-        // 1. Fetch Subscription ONLY (No Join)
+        // 1. Fetch Subscription ONLY
+        // We use a simple select to avoid the PGRST201 ambiguity error
         const { data: sub, error: subError } = await supabase
             .from("subscriptions")
             .select("plan_id, expires_at")
@@ -28,13 +29,12 @@ export async function checkUsage(userId, mode) {
 
         if (subError) {
             console.error("DEBUG: Sub Fetch Error:", subError);
-            throw new Error("Subscription check failed at DB level");
+            throw new Error("Subscription check failed");
         }
 
         // 2. Determine which plan to use
         let plan;
         if (sub && sub.plan_id) {
-            // Get the paid plan
             const { data: paidPlan } = await supabase
                 .from("plans")
                 .select("*")
@@ -43,7 +43,7 @@ export async function checkUsage(userId, mode) {
             plan = paidPlan;
         } 
 
-        // ROLLBACK: If no paid plan found, get the Free plan
+        // ROLLBACK: Default to Free plan if no active paid plan
         if (!plan) {
             const { data: freePlan, error: freeErr } = await supabase
                 .from("plans")
@@ -52,13 +52,15 @@ export async function checkUsage(userId, mode) {
                 .single();
             
             if (freeErr) {
-                console.error("DEBUG: Free Plan Missing:", freeErr);
-                throw new Error("System Error: Free plan not found in database.");
+                console.error("DEBUG: Free Plan Missing in DB:", freeErr);
+                // Fallback hardcoded limits if DB is missing the 'Free' row
+                plan = { name: 'Free', chat_limit: 30, tts_limit: 30, stt_limit: 30, s2s_limit: 30 };
+            } else {
+                plan = freePlan;
             }
-            plan = freePlan;
         }
 
-        // 3. Set the limits (Defaulting to 30 as per your new rules)
+        // 3. Set the limits (Uses DB values or defaults to 30)
         const limits = {
             chat: plan?.chat_limit ?? 30,
             tts: plan?.tts_limit ?? 30,
@@ -67,7 +69,7 @@ export async function checkUsage(userId, mode) {
         };
         const limit = limits[mode];
 
-        // 4. Check Usage
+        // 4. Fetch current usage and apply Daily Reset logic
         const { data: usageData, error: usageError } = await supabase
             .from("usage")
             .select("used, updated_at")
@@ -80,17 +82,20 @@ export async function checkUsage(userId, mode) {
         let used = 0;
         if (usageData && usageData.updated_at) {
             const lastUpdate = new Date(usageData.updated_at).toISOString().split('T')[0];
-            used = (lastUpdate === today) ? usageData.used : 0;
+            // If the last update was NOT today, the user effectively has 0 usage (Daily Reset)
+            used = (lastUpdate === today) ? (usageData.used || 0) : 0;
         }
 
+        // Check against limit
         if ((used + 1) > limit) {
-            throw new Error(`Limit reached: ${limit} daily messages for ${plan.name} plan.`);
+            const errorMsg = `Daily ${mode} limit reached (${limit}) for your ${plan.name} plan.`;
+            throw new Error(errorMsg);
         }
 
-        return true;
+        return true; 
     } catch (err) {
-        logger.error("checkUsage critical failure", err);
-        // This re-throws the error so the controller can catch it
+        // Log the specific error for Render debugging
+        console.error("checkUsage Failure:", err.message);
         throw err; 
     }
 }
