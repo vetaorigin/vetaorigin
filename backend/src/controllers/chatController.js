@@ -59,7 +59,7 @@ export const sendMessage = async (req, res) => {
         // 3. Pre-flight Rate Limit Check
         await checkUsage(userId, "chat");
 
-        // 4. Ensure Chat Thread exists
+       // 4. Ensure Chat Thread exists
         if (chatId) {
             const { data: c, error: cErr } = await supabase
                 .from("chats")
@@ -71,20 +71,21 @@ export const sendMessage = async (req, res) => {
             if (cErr || !c) return res.status(404).json({ msg: "Chat not found" });
             chat = c;
         } else {
-            // This is likely where the "Failed to initialize" error triggers
+            // NEW: Enhanced logging to find the "Initialization" bug
             const { data: newChat, error: nErr } = await supabase
                 .from("chats")
                 .insert([{ 
                     user_id: userId, 
-                    model: model, // Saving 'gpt-5.2' to DB
+                    model: model, // This is 'gpt-5.2'
                     title: message.substring(0, 50) 
                 }])
                 .select()
                 .single();
             
             if (nErr) {
-                console.error("SUPABASE CHAT INSERT ERROR:", nErr); // Check Render logs for this!
-                throw new Error("Failed to initialize chat thread");
+                // Look for this in your Render Logs!
+                console.error("CRITICAL DATABASE ERROR:", nErr.message, nErr.details, nErr.hint);
+                throw new Error(`Failed to initialize chat thread: ${nErr.message}`);
             }
             chat = newChat;
         }
