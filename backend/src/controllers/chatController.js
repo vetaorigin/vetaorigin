@@ -71,14 +71,43 @@ export const sendMessage = async (req, res) => {
             if (cErr || !c) return res.status(404).json({ msg: "Chat not found" });
             chat = c;
         } else {
+            // This is likely where the "Failed to initialize" error triggers
             const { data: newChat, error: nErr } = await supabase
                 .from("chats")
-                .insert([{ user_id: userId, model, title: message.substring(0, 50) }])
-                .select().single();
+                .insert([{ 
+                    user_id: userId, 
+                    model: model, // Saving 'gpt-5.2' to DB
+                    title: message.substring(0, 50) 
+                }])
+                .select()
+                .single();
             
-            if (nErr) throw new Error("Failed to initialize chat thread");
+            if (nErr) {
+                console.error("SUPABASE CHAT INSERT ERROR:", nErr); // Check Render logs for this!
+                throw new Error("Failed to initialize chat thread");
+            }
             chat = newChat;
         }
+        
+        // if (chatId) {
+        //     const { data: c, error: cErr } = await supabase
+        //         .from("chats")
+        //         .select("*")
+        //         .eq("id", chatId)
+        //         .eq("user_id", userId) 
+        //         .maybeSingle();
+
+        //     if (cErr || !c) return res.status(404).json({ msg: "Chat not found" });
+        //     chat = c;
+        // } else {
+        //     const { data: newChat, error: nErr } = await supabase
+        //         .from("chats")
+        //         .insert([{ user_id: userId, model, title: message.substring(0, 50) }])
+        //         .select().single();
+            
+        //     if (nErr) throw new Error("Failed to initialize chat thread");
+        //     chat = newChat;
+        // }
 
         // 5. Persist User Message with Metadata
         const { data: savedUserMsg, error: uMsgErr } = await supabase
