@@ -82,4 +82,4 @@ app.listen(PORT, () => {
   logger.info(`Veta Origin Backend running on port ${PORT} (Stateless JWT Mode)`);
 });
 app.timeout = 120000;
-server.keepAliveTimeout = 120000;
+app.keepAliveTimeout = 120000;
