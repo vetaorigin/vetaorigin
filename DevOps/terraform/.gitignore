@@ -1,3 +1,5 @@
+# Ignore AWS CLI zip files
+awscliv2.zip
 terraform.tfvars
 .terraform/
 *.tfstate
