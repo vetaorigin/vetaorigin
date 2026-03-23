@@ -25,6 +25,7 @@ resource "aws_subnet" "public" {
 
   tags = {
     Name = "public-${count.index}"
+    "kubernetes.io/role/elb" = "1"
   }
 }
 
@@ -39,6 +40,7 @@ resource "aws_subnet" "private_app" {
 
   tags = {
     Name = "private-app-${count.index}"
+    "kubernetes.io/role/internal-elb" = "1"
   }
 }
 
@@ -67,13 +69,13 @@ resource "aws_internet_gateway" "igw" {
 # NAT GATEWAY (per AZ)
 # --------------------
 resource "aws_eip" "nat" {
-  count = 2
+  count = 1
 }
 
 resource "aws_nat_gateway" "nat" {
-  count         = 2
-  allocation_id = aws_eip.nat[count.index].id
-  subnet_id     = aws_subnet.public[count.index].id
+  count         = 1
+  allocation_id = aws_eip.nat[0].id
+  subnet_id     = aws_subnet.public[0].id
 }
 
 # --------------------
@@ -105,7 +107,7 @@ resource "aws_route" "private_nat" {
   count                  = 2
   route_table_id         = aws_route_table.private[count.index].id
   destination_cidr_block = "0.0.0.0/0"
-  nat_gateway_id         = aws_nat_gateway.nat[count.index].id
+  nat_gateway_id         = aws_nat_gateway.nat[0].id
 }
 
 resource "aws_route_table_association" "private_app_assoc" {
