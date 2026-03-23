@@ -1,9 +1,23 @@
 terraform.tfvars
-**/.terraform/
-**/terraform.tfstate
-**/terraform.tfstate.backup
-*.tfvars
 .terraform/
+*.tfstate
+*.tfstate.backup
 
-# Local binaries
+# Variable files (may contain secrets)
+*.tfvars
+
+# Crash logs
+crash.log
+
+# Override files
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# CLI config
+.terraformrc
+terraform.rc
+
+# Local binaries / archives
 *.zip
