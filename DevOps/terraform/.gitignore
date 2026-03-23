@@ -3,6 +3,7 @@ terraform.tfvars
 **/terraform.tfstate
 **/terraform.tfstate.backup
 *.tfvars
+.terraform/
 
 # Local binaries
 *.zip
