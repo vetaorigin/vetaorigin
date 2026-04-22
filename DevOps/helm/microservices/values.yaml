@@ -1,0 +1,58 @@
+services:
+  auth:
+    port: 3001
+    image: 598456800596.dkr.ecr.us-east-1.amazonaws.com/veta-origin/auth-service
+    db: true
+    redis: true
+
+  user:
+    port: 3003
+    image: 598456800596.dkr.ecr.us-east-1.amazonaws.com/veta-origin/user-service
+    db: true
+    redis: false
+
+  content:
+    port: 3004
+    image: 598456800596.dkr.ecr.us-east-1.amazonaws.com/veta-origin/content-service
+    db: true
+    redis: true
+
+  apiGateway:
+    port: 3000
+    image: 598456800596.dkr.ecr.us-east-1.amazonaws.com/veta-origin/api-gateway
+    db: false
+    redis: true
+
+  notification:
+    port: 3004
+    image: your-dockerhub/notification-service:latest
+    db: false
+    redis: true
+
+  email:
+    port: 3005
+    image: your-dockerhub/email-service:latest
+    db: false
+    redis: true
+
+global:
+  readinessProbe:
+    httpGet:
+      path: /health
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    failureThreshold: 3
+
+  livenessProbe:
+    httpGet:
+      path: /health
+    initialDelaySeconds: 20
+    periodSeconds: 30
+
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
