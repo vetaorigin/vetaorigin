@@ -1,0 +1,9 @@
+{
+  "windowMs": 500000, 
+  "max": 100,
+  "services": {
+    "/auth": { "max": 5 },
+    "/user": { "max": 50 },
+    "/content": { "max": 100 }
+  }
+}
