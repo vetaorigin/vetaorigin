@@ -1,3 +1,7 @@
-output "redis_endpoint" {
-  value = aws_elasticache_cluster.redis.cache_nodes[0].address
+output "redis_primary_endpoint" {
+  value = aws_elasticache_replication_group.redis.primary_endpoint_address
+}
+
+output "redis_reader_endpoint" {
+  value = aws_elasticache_replication_group.redis.reader_endpoint_address
 }

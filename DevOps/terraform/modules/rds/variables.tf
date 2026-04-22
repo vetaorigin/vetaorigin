@@ -26,3 +26,7 @@ variable "rds_allocated_storage" {
   type        = number
 }
 
+variable "private_subnets" {
+  type        = list(string)
+  description = "List of private subnet IDs for the RDS instances"
+}

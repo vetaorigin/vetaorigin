@@ -7,8 +7,8 @@ resource "aws_db_subnet_group" "rds_subnet" {
 resource "aws_db_instance" "rds" {
   identifier              = "prod-postgres"
   engine                  = "postgres"
-  engine_version          = "15.3"
-  instance_class          = "db.t3.medium"
+  engine_version          = "15"
+  instance_class          = var.rds_instance_class
   allocated_storage       = 50
   max_allocated_storage   = 100
   storage_type            = "gp3"
