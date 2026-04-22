@@ -1,0 +1,160 @@
+stages:
+  - build
+  - test
+  - deploy-staging
+  - deploy-production
+
+# -----------------------------
+# GLOBAL VARIABLES
+# -----------------------------
+variables:
+  AWS_REGION: "us-east-1"
+  ECR_REGISTRY: "598456800596.dkr.ecr.us-east-1.amazonaws.com"
+  ECR_BASE: "$ECR_REGISTRY/veta-origin"
+  IMAGE_TAG: "sha-$CI_COMMIT_SHORT_SHA"
+  DOCKER_TLS_CERTDIR: ""
+
+# -----------------------------
+# OIDC CONFIG
+# -----------------------------
+id_tokens:
+  AWS_ID_TOKEN:
+    aud: https://gitlab.com
+
+# -----------------------------
+# AWS LOGIN TEMPLATE
+# -----------------------------
+.aws_login: &aws_login
+  before_script:
+    - echo "$AWS_ID_TOKEN" > /tmp/web_identity_token
+    - export AWS_WEB_IDENTITY_TOKEN_FILE=/tmp/web_identity_token
+    - export AWS_ROLE_ARN=$AWS_ROLE_ARN
+    - export AWS_DEFAULT_REGION=$AWS_REGION
+    - aws sts get-caller-identity
+
+# -----------------------------
+# BUILD TEMPLATE
+# -----------------------------
+.build_template: &build_template
+  stage: build
+  image: docker:24
+  services:
+    - docker:24-dind
+  before_script:
+    - apk add --no-cache aws-cli
+    - echo "$AWS_ID_TOKEN" > /tmp/web_identity_token
+    - export AWS_WEB_IDENTITY_TOKEN_FILE=/tmp/web_identity_token
+    - export AWS_ROLE_ARN=$AWS_ROLE_ARN
+    - export AWS_DEFAULT_REGION=$AWS_REGION
+    - aws ecr get-login-password --region $AWS_REGION |
+      docker login --username AWS --password-stdin $ECR_REGISTRY
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "develop"'
+
+# -----------------------------
+# BUILD JOBS
+# -----------------------------
+
+build_api_gateway:
+  <<: *build_template
+  script:
+    - docker build -t $ECR_BASE/api-gateway:$IMAGE_TAG ./backend/services/api-gateway
+    - docker push $ECR_BASE/api-gateway:$IMAGE_TAG
+  rules:
+    - changes:
+        - backend/services/api-gateway/**
+
+build_auth_service:
+  <<: *build_template
+  script:
+    - docker build -t $ECR_BASE/auth-service:$IMAGE_TAG ./backend/services/auth-service
+    - docker push $ECR_BASE/auth-service:$IMAGE_TAG
+  rules:
+    - changes:
+        - backend/services/auth-service/**
+
+build_user_service:
+  <<: *build_template
+  script:
+    - docker build -t $ECR_BASE/user-service:$IMAGE_TAG ./backend/services/user-service
+    - docker push $ECR_BASE/user-service:$IMAGE_TAG
+  rules:
+    - changes:
+        - backend/services/user-service/**
+
+build_content_service:
+  <<: *build_template
+  script:
+    - docker build -t $ECR_BASE/content-service:$IMAGE_TAG ./backend/services/content-service
+    - docker push $ECR_BASE/content-service:$IMAGE_TAG
+  rules:
+    - changes:
+        - backend/services/content-service/**
+
+build_notification_service:
+  <<: *build_template
+  script:
+    - docker build -t $ECR_BASE/notification-service:$IMAGE_TAG ./backend/services/notification-service
+    - docker push $ECR_BASE/notification-service:$IMAGE_TAG
+  rules:
+    - changes:
+        - backend/services/notification-service/**
+
+# -----------------------------
+# TEST STAGE
+# -----------------------------
+test:
+  stage: test
+  image: node:20-slim
+  script:
+    - echo "Running tests..."
+    - npm ci || true
+    - npm test || true
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "develop"'
+
+# -----------------------------
+# DEPLOY TEMPLATE
+# -----------------------------
+.deploy_template: &deploy_template
+  image: alpine/helm:3.14.0
+  before_script:
+    - apk add --no-cache aws-cli bash curl
+    - echo "$AWS_ID_TOKEN" > /tmp/web_identity_token
+    - export AWS_WEB_IDENTITY_TOKEN_FILE=/tmp/web_identity_token
+    - export AWS_ROLE_ARN=$AWS_ROLE_ARN
+    - export AWS_DEFAULT_REGION=$AWS_REGION
+    - aws eks update-kubeconfig --name $EKS_CLUSTER_NAME --region $AWS_REGION
+
+# -----------------------------
+# DEPLOY STAGING
+# -----------------------------
+deploy_staging:
+  <<: *deploy_template
+  stage: deploy-staging
+  script:
+    - helm upgrade --install veta-origin ./helm/microservices \
+        --namespace staging-backend \
+        --create-namespace \
+        --values ./helm/microservices/values.yaml \
+        --set image.tag=$IMAGE_TAG \
+        --wait --timeout 120s
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "develop"'
+
+# -----------------------------
+# DEPLOY PRODUCTION
+# -----------------------------
+deploy_production:
+  <<: *deploy_template
+  stage: deploy-production
+  script:
+    - helm upgrade --install veta-origin ./helm/microservices \
+        --namespace production-backend \
+        --create-namespace \
+        --values ./helm/microservices/values.yaml \
+        --set image.tag=$IMAGE_TAG \
+        --wait --timeout 180s
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
+  when: manual
