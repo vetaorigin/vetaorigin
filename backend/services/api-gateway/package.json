@@ -1,0 +1,25 @@
+{
+  "name": "api-gateway",
+  "version": "1.0.0",
+  "description": "Production-grade API Gateway for microservices",
+  "main": "server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.0",
+    "http-proxy-middleware": "^3.0.0",
+    "helmet": "^8.0.0",
+    "express-rate-limit": "^7.4.0",
+    "pino": "^9.4.0",
+    "@opentelemetry/sdk-node": "^0.54.0",
+    "@opentelemetry/instrumentation-http": "^0.54.0",
+    "@opentelemetry/instrumentation-express": "^0.54.0",
+    "@opentelemetry/exporter-trace-otlp-proto": "^0.54.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.4"
+  }
+}
