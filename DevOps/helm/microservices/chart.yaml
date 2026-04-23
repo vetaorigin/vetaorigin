@@ -1,6 +1,6 @@
 apiVersion: v2
 name: microservices
-description: Helm chart for backend microservices
+description: Helm chart for backend microservices at vetaorigin 
 type: application
 version: 0.1.0
 appVersion: "1.0.0"
