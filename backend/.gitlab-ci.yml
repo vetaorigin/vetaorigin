@@ -14,12 +14,7 @@ variables:
   IMAGE_TAG: "sha-$CI_COMMIT_SHORT_SHA"
   DOCKER_TLS_CERTDIR: ""
 
-# -----------------------------
-# OIDC CONFIG
-# -----------------------------
-id_tokens:
-  AWS_ID_TOKEN:
-    aud: https://gitlab.com
+
 
 # -----------------------------
 # AWS LOGIN TEMPLATE
@@ -41,13 +36,11 @@ id_tokens:
   services:
     - docker:24-dind
   before_script:
-    - apk add --no-cache aws-cli
-    - echo "$AWS_ID_TOKEN" > /tmp/web_identity_token
-    - export AWS_WEB_IDENTITY_TOKEN_FILE=/tmp/web_identity_token
-    - export AWS_ROLE_ARN=$AWS_ROLE_ARN
-    - export AWS_DEFAULT_REGION=$AWS_REGION
-    - aws ecr get-login-password --region $AWS_REGION |
-      docker login --username AWS --password-stdin $ECR_REGISTRY
+    - apk add --no-cache aws-cli bash curl
+    - aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID
+    - aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY
+    - aws configure set region $AWS_REGION
+    - aws eks update-kubeconfig --name $EKS_CLUSTER_NAME --region $AWS_REGION
   rules:
     - if: '$CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "develop"'
 
@@ -117,7 +110,9 @@ test:
 # DEPLOY TEMPLATE
 # -----------------------------
 .deploy_template: &deploy_template
-  image: alpine/helm:3.14.0
+  image:
+    name: alpine/helm:3.14.0
+    entrypoint: [""]
   before_script:
     - apk add --no-cache aws-cli bash curl
     - echo "$AWS_ID_TOKEN" > /tmp/web_identity_token
@@ -126,35 +121,30 @@ test:
     - export AWS_DEFAULT_REGION=$AWS_REGION
     - aws eks update-kubeconfig --name $EKS_CLUSTER_NAME --region $AWS_REGION
 
-# -----------------------------
-# DEPLOY STAGING
-# -----------------------------
-deploy_staging:
-  <<: *deploy_template
-  stage: deploy-staging
-  script:
-    - helm upgrade --install veta-origin ./helm/microservices \
-        --namespace staging-backend \
-        --create-namespace \
-        --values ./helm/microservices/values.yaml \
-        --set image.tag=$IMAGE_TAG \
-        --wait --timeout 120s
-  rules:
-    - if: '$CI_COMMIT_BRANCH == "develop"'
+
+
 
 # -----------------------------
 # DEPLOY PRODUCTION
 # -----------------------------
 deploy_production:
-  <<: *deploy_template
   stage: deploy-production
+  image:
+    name: alpine/helm:3.14.0
+    entrypoint: [""]
+  before_script:
+    - apk add --no-cache aws-cli bash curl
+    - aws eks update-kubeconfig
+        --name $EKS_CLUSTER_NAME
+        --region $AWS_REGION
   script:
-    - helm upgrade --install veta-origin ./helm/microservices \
+    - |
+      helm upgrade --install veta-origin ./DevOps/helm/microservices \
         --namespace production-backend \
         --create-namespace \
-        --values ./helm/microservices/values.yaml \
+        --values ./DevOps/helm/microservices/values.yaml \
         --set image.tag=$IMAGE_TAG \
         --wait --timeout 180s
-  rules:
-    - if: '$CI_COMMIT_BRANCH == "main"'
+  only:
+    - main
   when: manual
