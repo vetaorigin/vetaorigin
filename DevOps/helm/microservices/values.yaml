@@ -24,7 +24,7 @@ services:
     redis: true
 
   notification:
-    port: 3004
+    port: 3006
     image: your-dockerhub/notification-service:latest
     db: false
     redis: true

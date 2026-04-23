@@ -18,6 +18,7 @@ spec:
           image: {{ .Values.services.user.image }}
           ports:
             - containerPort: {{ .Values.services.user.port }}
+
           env:
             - name: PORT
               value: "{{ .Values.services.user.port }}"
@@ -49,26 +50,25 @@ spec:
                   name: backend-secrets
                   key: JWT_SECRET
 
+          readinessProbe:
+            httpGet:
+              path: {{ .Values.global.readinessProbe.httpGet.path }}
+              port: {{ .Values.services.user.port }}
+            initialDelaySeconds: {{ .Values.global.readinessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.global.readinessProbe.periodSeconds }}
+            failureThreshold: {{ .Values.global.readinessProbe.failureThreshold }}
 
-readinessProbe:
-  httpGet:
-    path: {{ .Values.global.readinessProbe.httpGet.path }}
-    port: {{ .Values.services.user.port }}
-  initialDelaySeconds: {{ .Values.global.readinessProbe.initialDelaySeconds }}
-  periodSeconds: {{ .Values.global.readinessProbe.periodSeconds }}
-  failureThreshold: {{ .Values.global.readinessProbe.failureThreshold }}
+          livenessProbe:
+            httpGet:
+              path: {{ .Values.global.livenessProbe.httpGet.path }}
+              port: {{ .Values.services.user.port }}
+            initialDelaySeconds: {{ .Values.global.livenessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.global.livenessProbe.periodSeconds }}
 
-livenessProbe:
-  httpGet:
-    path: {{ .Values.global.livenessProbe.httpGet.path }}
-    port: {{ .Values.services.user.port }}
-  initialDelaySeconds: {{ .Values.global.livenessProbe.initialDelaySeconds }}
-  periodSeconds: {{ .Values.global.livenessProbe.periodSeconds }}
-
-resources:
-  requests:
-    cpu: {{ .Values.global.resources.requests.cpu }}
-    memory: {{ .Values.global.resources.requests.memory }}
-  limits:
-    cpu: {{ .Values.global.resources.limits.cpu }}
-    memory: {{ .Values.global.resources.limits.memory }}
+          resources:
+            requests:
+              cpu: {{ .Values.global.resources.requests.cpu }}
+              memory: {{ .Values.global.resources.requests.memory }}
+            limits:
+              cpu: {{ .Values.global.resources.limits.cpu }}
+              memory: {{ .Values.global.resources.limits.memory }}
