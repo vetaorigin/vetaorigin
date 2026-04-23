@@ -139,10 +139,10 @@ deploy_production:
         --region $AWS_REGION
   script:
     - |
-      helm upgrade --install veta-origin ./helm/microservices \
+      helm upgrade --install veta-origin ./DevOps/helm/microservices \
         --namespace production-backend \
         --create-namespace \
-        --values ./helm/microservices/values.yaml \
+        --values ./DevOps/helm/microservices/values.yaml \
         --set image.tag=$IMAGE_TAG \
         --wait --timeout 180s
   only:
