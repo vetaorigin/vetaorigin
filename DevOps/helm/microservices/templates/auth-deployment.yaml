@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: auth-service
-          image: {{ .Values.services.auth.image }}
+          image: "{{ .Values.services.auth.image }}:{{ .Values.services.auth.tag }}"
           ports:
             - containerPort: {{ .Values.services.auth.port }}
 

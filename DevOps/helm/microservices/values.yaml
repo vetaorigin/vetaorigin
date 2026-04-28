@@ -2,36 +2,42 @@ services:
   auth:
     port: 3001
     image: 598456800596.dkr.ecr.us-east-1.amazonaws.com/veta-origin/auth-service
+    tag: "prod"
     db: true
     redis: true
 
   user:
     port: 3003
     image: 598456800596.dkr.ecr.us-east-1.amazonaws.com/veta-origin/user-service
+    tag: "prod"
     db: true
     redis: false
 
   content:
     port: 3004
     image: 598456800596.dkr.ecr.us-east-1.amazonaws.com/veta-origin/content-service
+    tag: "prod"
     db: true
     redis: true
 
   apiGateway:
     port: 3000
     image: 598456800596.dkr.ecr.us-east-1.amazonaws.com/veta-origin/api-gateway
+    tag: "prod"
     db: false
     redis: true
 
   notification:
     port: 3006
     image: your-dockerhub/notification-service:latest
+    tag: "prod"
     db: false
     redis: true
 
   email:
     port: 3005
     image: your-dockerhub/email-service:latest
+    tag: "prod"
     db: false
     redis: true
 
