@@ -35,6 +35,18 @@ spec:
                   name: backend-secrets
                   key: DB_USER
 
+            - name: SUPABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: backend-secrets
+                  key: SUPABASE_URL
+                  
+            - name: SUPABASE_ANON_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: backend-secrets
+                  key: SUPABASE_ANON_KEY
+
             - name: DB_PASSWORD
               valueFrom:
                 secretKeyRef:

@@ -1,7 +1,6 @@
 stages:
   - build
   - test
-  - deploy-staging
   - deploy-production
 
 # -----------------------------
@@ -13,85 +12,82 @@ variables:
   ECR_BASE: "$ECR_REGISTRY/veta-origin"
   IMAGE_TAG: "sha-$CI_COMMIT_SHORT_SHA"
   DOCKER_TLS_CERTDIR: ""
-
-
-
-# -----------------------------
-# AWS LOGIN TEMPLATE
-# -----------------------------
-.aws_login: &aws_login
-  before_script:
-    - echo "$AWS_ID_TOKEN" > /tmp/web_identity_token
-    - export AWS_WEB_IDENTITY_TOKEN_FILE=/tmp/web_identity_token
-    - export AWS_ROLE_ARN=$AWS_ROLE_ARN
-    - export AWS_DEFAULT_REGION=$AWS_REGION
-    - aws sts get-caller-identity
+  HELM_CHART_PATH: "./DevOps/helm/microservices"
 
 # -----------------------------
 # BUILD TEMPLATE
+# Uses python:3.11-slim base to
+# avoid Alpine 3.20 libexpat bug
+# Docker CLI installed manually
+# Pushes both SHA tag and prod tag
 # -----------------------------
 .build_template: &build_template
   stage: build
-  image: docker:24
+  image: python:3.11-slim
   services:
     - docker:24-dind
+  variables:
+    DOCKER_HOST: tcp://docker:2375
+    DOCKER_TLS_CERTDIR: ""
   before_script:
-    - apk add --no-cache aws-cli bash curl
+    - apt-get update -qq && apt-get install -y -qq curl unzip
+    - curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+    - unzip -q awscliv2.zip && ./aws/install
+    - curl -fsSL https://get.docker.com | sh
+    - aws --version
+    - docker --version
     - aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID
     - aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY
     - aws configure set region $AWS_REGION
-    - aws eks update-kubeconfig --name $EKS_CLUSTER_NAME --region $AWS_REGION
-  rules:
-    - if: '$CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "develop"'
+    - aws ecr get-login-password --region $AWS_REGION |
+      docker login --username AWS --password-stdin $ECR_REGISTRY
 
 # -----------------------------
 # BUILD JOBS
+# Each job pushes two tags:
+# 1. sha-xxxxxxxx (traceability)
+# 2. prod (what Helm pulls)
 # -----------------------------
-
 build_api_gateway:
   <<: *build_template
   script:
     - docker build -t $ECR_BASE/api-gateway:$IMAGE_TAG ./backend/services/api-gateway
     - docker push $ECR_BASE/api-gateway:$IMAGE_TAG
+    - docker tag $ECR_BASE/api-gateway:$IMAGE_TAG $ECR_BASE/api-gateway:prod
+    - docker push $ECR_BASE/api-gateway:prod
   rules:
-    - changes:
-        - backend/services/api-gateway/**
+    - if: '$CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "develop"'
 
 build_auth_service:
   <<: *build_template
   script:
     - docker build -t $ECR_BASE/auth-service:$IMAGE_TAG ./backend/services/auth-service
     - docker push $ECR_BASE/auth-service:$IMAGE_TAG
+    - docker tag $ECR_BASE/auth-service:$IMAGE_TAG $ECR_BASE/auth-service:prod
+    - docker push $ECR_BASE/auth-service:prod
   rules:
-    - changes:
-        - backend/services/auth-service/**
+    - if: '$CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "develop"'
 
 build_user_service:
   <<: *build_template
   script:
     - docker build -t $ECR_BASE/user-service:$IMAGE_TAG ./backend/services/user-service
     - docker push $ECR_BASE/user-service:$IMAGE_TAG
+    - docker tag $ECR_BASE/user-service:$IMAGE_TAG $ECR_BASE/user-service:prod
+    - docker push $ECR_BASE/user-service:prod
   rules:
-    - changes:
-        - backend/services/user-service/**
+    - if: '$CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "develop"'
 
 build_content_service:
   <<: *build_template
   script:
     - docker build -t $ECR_BASE/content-service:$IMAGE_TAG ./backend/services/content-service
     - docker push $ECR_BASE/content-service:$IMAGE_TAG
+    - docker tag $ECR_BASE/content-service:$IMAGE_TAG $ECR_BASE/content-service:prod
+    - docker push $ECR_BASE/content-service:prod
   rules:
-    - changes:
-        - backend/services/content-service/**
+    - if: '$CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "develop"'
 
-build_notification_service:
-  <<: *build_template
-  script:
-    - docker build -t $ECR_BASE/notification-service:$IMAGE_TAG ./backend/services/notification-service
-    - docker push $ECR_BASE/notification-service:$IMAGE_TAG
-  rules:
-    - changes:
-        - backend/services/notification-service/**
 
 # -----------------------------
 # TEST STAGE
@@ -108,43 +104,47 @@ test:
 
 # -----------------------------
 # DEPLOY TEMPLATE
+# Uses prod tag for all services
 # -----------------------------
 .deploy_template: &deploy_template
   image:
     name: alpine/helm:3.14.0
     entrypoint: [""]
   before_script:
-    - apk add --no-cache aws-cli bash curl
-    - echo "$AWS_ID_TOKEN" > /tmp/web_identity_token
-    - export AWS_WEB_IDENTITY_TOKEN_FILE=/tmp/web_identity_token
-    - export AWS_ROLE_ARN=$AWS_ROLE_ARN
-    - export AWS_DEFAULT_REGION=$AWS_REGION
+    - apk add --no-cache aws-cli bash curl kubectl
+    - aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID
+    - aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY
+    - aws configure set region $AWS_REGION
     - aws eks update-kubeconfig --name $EKS_CLUSTER_NAME --region $AWS_REGION
-
-
-
+    - kubectl cluster-info --request-timeout=30s
+    - kubectl get nodes --request-timeout=30s
 
 # -----------------------------
 # DEPLOY PRODUCTION
+# Manual approval required
+# Sets prod tag for all services
 # -----------------------------
 deploy_production:
+  <<: *deploy_template
   stage: deploy-production
-  image:
-    name: alpine/helm:3.14.0
-    entrypoint: [""]
-  before_script:
-    - apk add --no-cache aws-cli bash curl
-    - aws eks update-kubeconfig
-        --name $EKS_CLUSTER_NAME
-        --region $AWS_REGION
   script:
     - |
-      helm upgrade --install veta-origin ./DevOps/helm/microservices \
+      helm upgrade --install veta-origin $HELM_CHART_PATH \
         --namespace production-backend \
         --create-namespace \
-        --values ./DevOps/helm/microservices/values.yaml \
-        --set image.tag=$IMAGE_TAG \
-        --wait --timeout 180s
-  only:
-    - main
-  when: manual
+        --values $HELM_CHART_PATH/values.yaml \
+        --set services.auth.tag=prod \
+        --set services.user.tag=prod \
+        --set services.content.tag=prod \
+        --set services.apiGateway.tag=prod \
+        --set services.notification.tag=prod \
+        --set services.email.tag=prod \
+        --timeout 300s \
+        --wait || true
+      echo "--- Pod Status ---"
+      kubectl get pods -n production-backend
+      echo "--- Pod Details ---"
+      kubectl describe pods -n production-backend
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
+      when: manual

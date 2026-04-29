@@ -18,44 +18,47 @@ spec:
           image: "{{ .Values.services.auth.image }}:{{ .Values.services.auth.tag }}"
           ports:
             - containerPort: {{ .Values.services.auth.port }}
-
           env:
             - name: PORT
               value: "{{ .Values.services.auth.port }}"
-
             - name: DB_HOST
               valueFrom:
                 secretKeyRef:
                   name: backend-secrets
                   key: DB_HOST
-
             - name: DB_USER
               valueFrom:
                 secretKeyRef:
                   name: backend-secrets
                   key: DB_USER
-
             - name: DB_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: backend-secrets
                   key: DB_PASSWORD
-
             - name: DB_NAME
               value: "auth_db"
-
             - name: REDIS_URL
               valueFrom:
                 secretKeyRef:
                   name: backend-secrets
                   key: REDIS_URL
-
             - name: JWT_SECRET
               valueFrom:
                 secretKeyRef:
                   name: backend-secrets
                   key: JWT_SECRET
-
+            # ── Added to fix CrashLoopBackOff ──────────────
+            - name: SUPABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: backend-secrets
+                  key: SUPABASE_URL
+            - name: SUPABASE_ANON_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: backend-secrets
+                  key: SUPABASE_ANON_KEY
           readinessProbe:
             httpGet:
               path: {{ .Values.global.readinessProbe.httpGet.path }}
@@ -63,14 +66,12 @@ spec:
             initialDelaySeconds: {{ .Values.global.readinessProbe.initialDelaySeconds }}
             periodSeconds: {{ .Values.global.readinessProbe.periodSeconds }}
             failureThreshold: {{ .Values.global.readinessProbe.failureThreshold }}
-
           livenessProbe:
             httpGet:
               path: {{ .Values.global.livenessProbe.httpGet.path }}
               port: {{ .Values.services.auth.port }}
             initialDelaySeconds: {{ .Values.global.livenessProbe.initialDelaySeconds }}
             periodSeconds: {{ .Values.global.livenessProbe.periodSeconds }}
-
           resources:
             requests:
               cpu: {{ .Values.global.resources.requests.cpu }}
